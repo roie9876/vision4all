@@ -1,6 +1,6 @@
 # Vision4all
 
-Vision-4O is a Streamlit-based application that allows users to analyze images and videos using Azure OpenAI services. The application provides functionalities to search for objects in images, detect objects in videos/images, and summarize video/image descriptions in Hebrew.
+Vision-4all is a Streamlit-based application that allows users to analyze images and videos using Azure OpenAI services. The application provides functionalities to search for objects in images and videos, detect objects in videos/images, and summarize video/image descriptions in Hebrew.
 
 ## Features
 
