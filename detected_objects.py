@@ -65,8 +65,12 @@ def run_detect_objects():
         for frame_path in frames:
             objects = detect_objects_in_image(Image.open(frame_path))
             objects_list.append(objects)
-        st.write("Detected objects in frames.")
+        st.markdown("<h3>Detected objects in frames</h3>", unsafe_allow_html=True)
 
         # Step 3: Display detected objects
         for i, objects in enumerate(objects_list):
-            st.write(f"Frame {i+1}: {', '.join(objects)}")
+            items_html = ''.join(f"<li>{obj}</li>" for obj in objects)
+            st.markdown(
+                f"<strong>Frame {i+1}:</strong><ul>{items_html}</ul>",
+                unsafe_allow_html=True
+            )
