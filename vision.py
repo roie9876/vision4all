@@ -19,6 +19,7 @@ from dotenv import load_dotenv  # <-- new import
 from utils import extract_frames, summarize_descriptions  # <-- updated import
 from search_object_in_video import run_search_object_in_video  # <-- new import
 from detect_change_in_video_and_summary import run_detect_change_in_video_and_summary  # <-- new import
+from video_summary import handle_image_upload, handle_video_upload, describe_images  # <-- new import
 
 # Load environment variables
 load_dotenv()
