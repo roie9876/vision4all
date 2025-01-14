@@ -57,6 +57,10 @@ def run_detect_objects():
             st.write("Uploaded image.")
 
         # Step 2: Detect objects in frames
+        content_prompt = st.text_input(
+            "Enter the content prompt:",
+            value="List all objects in this image in Hebrew, for each object add description like color, shape, material etc in Hebrew"
+        )
         objects_list = []
         for frame_path in frames:
             objects = detect_objects_in_image(Image.open(frame_path))

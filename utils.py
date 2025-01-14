@@ -176,7 +176,7 @@ def detect_objects_in_image(image):
                 "content": [
                     {
                         "type": "text",
-                        "text": "List all objects in this image in Hebrew, for each object add description like color, shape, material etc in Hebrew"
+                        "text": "List all objects in this image in Hebrew, for each object add description like color, shape, material etc in Hebrew. the list needs to be in a table format"
                     },
                     {
                         "type": "text",
