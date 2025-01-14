@@ -133,8 +133,8 @@ def describe_images(images):
 
 def handle_image_upload(uploaded_file):
     img = Image.open(uploaded_file)
-    if img.mode == 'CMYK':
-        img = img.convert('RGB')  # Convert CMYK to RGB
+    if img.mode == 'CMYK' or img.mode == 'RGBA':
+        img = img.convert('RGB')  # Convert CMYK or RGBA to RGB
     st.image(img, caption='Uploaded Image', use_container_width=True)
     
     temp_dir = os.path.join(os.getcwd(), 'temp')

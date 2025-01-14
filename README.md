@@ -37,7 +37,7 @@ Vision-4all is a Streamlit-based application that allows users to analyze images
 4. Create a `.env` file in the project root directory and add your Azure OpenAI credentials:
     ```properties
     AZURE_OPENAI_KEY=your_openai_api_key
-    AZURE_OPENAI_ENDPOINT=your_openai_endpoint
+    AZURE_OPENAI_ENDPOINT=https://xxxx.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview
     AZURE_OPENAI_API_VERSION=2024-08-01-preview
     AZURE_OPENAI_DEPLOYMENT=gpt-4o
     ```
