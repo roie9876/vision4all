@@ -55,7 +55,7 @@ def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     image.save(buffered, format="JPEG", quality=quality)
     return Image.open(buffered)
 
-def describe_image(image):
+def describe_image(image, content_prompt):
     logging.info("Describing image")
     
     # Resize and compress the image to reduce base64 size
@@ -85,7 +85,7 @@ def describe_image(image):
             "content": [
                 {
                     "type": "text",
-                    "text": "Describe what you see in Hebrew:"
+                    "text": content_prompt
                 },
                 {
                     "type": "image_url",
@@ -122,11 +122,11 @@ def describe_image(image):
     
     return description
 
-def describe_images(images):
+def describe_images(images, content_prompt):
     logging.info("Describing images")
     descriptions = []
     for image in images:
-        description = describe_image(image)
+        description = describe_image(image, content_prompt)
         descriptions.append(description)
     logging.info("Image descriptions received")
     return descriptions
@@ -178,7 +178,7 @@ def run_video_summary():
 
         # Step 2: Analyze frames and generate descriptions
         images = [Image.open(frame_path) for frame_path in frames]
-        descriptions = describe_images(images)
+        descriptions = describe_images(images, "Describe what you see in Hebrew:")
         st.write("Analyzed frames and generated descriptions.")
         logging.info("Analyzed frames and generated descriptions.")
 
@@ -210,7 +210,7 @@ def summarize_video_segment(segment_path):
 
     # Describe each frame
     images = [Image.open(frame_path) for frame_path in frames]
-    descriptions = describe_images(images)
+    descriptions = describe_images(images, "Describe what you see in Hebrew:")
     logging.info("Generated descriptions for frames.")
 
     # Summarize the descriptions
