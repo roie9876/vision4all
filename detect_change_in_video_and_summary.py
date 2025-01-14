@@ -6,7 +6,6 @@ import io
 import base64
 from PIL import Image
 from utils import extract_frames, extract_video_segment
-from video_summary import describe_images  # Import describe_images function
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -51,6 +50,88 @@ adapter = HTTPAdapter(max_retries=retry_strategy)
 http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
+
+def resize_and_compress_image(image, max_size=(800, 800), quality=95):
+    image.thumbnail(max_size, Image.LANCZOS)
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG", quality=quality)
+    return Image.open(buffered)
+
+def describe_image(image):
+    logging.info("Describing image")
+    
+    # Resize and compress the image to reduce base64 size
+    image = resize_and_compress_image(image)
+
+    # Convert image to base64
+    def image_to_base64(img):
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG")
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+    encoded_image = image_to_base64(image)
+
+    # Prepare the chat prompt
+    chat_prompt = [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are an AI assistant that helps people find information."
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Describe what you see in Hebrew:"
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{encoded_image}"
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "\n"
+                }
+            ]
+        }
+    ]
+
+    # Generate the completion
+    try:
+        completion = client.chat.completions.create(
+            model=deployment,
+            messages=chat_prompt,
+            max_tokens=4096,
+            temperature=0,
+            top_p=0.95,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop=None,
+            stream=False
+        )
+        description = completion.choices[0].message.content
+        logging.info("Image description received")
+    except Exception as e:
+        logging.error(f"Failed to generate completion. Error: {e}")
+        raise SystemExit(f"Failed to generate completion. Error: {e}")
+    
+    return description
+
+def describe_images(images):
+    logging.info("Describing images")
+    descriptions = []
+    for image in images:
+        description = describe_image(image)
+        descriptions.append(description)
+    logging.info("Image descriptions received")
+    return descriptions
 
 def detect_changes_with_openai(frames):
     logging.info("Detecting changes with OpenAI")

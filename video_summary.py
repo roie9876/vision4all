@@ -11,6 +11,7 @@ from openai import AzureOpenAI
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+import time
 
 # Load environment variables
 load_dotenv()
@@ -21,21 +22,11 @@ deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 subscription_key = os.getenv("AZURE_OPENAI_KEY")
 api_version = os.getenv("AZURE_OPENAI_API_VERSION")
 
-# Log environment variables for debugging
-logging.info(f"Endpoint: {endpoint}")
-logging.info(f"Deployment: {deployment}")
-
 client = AzureOpenAI(
     azure_endpoint=endpoint,
     api_key=subscription_key,
     api_version=api_version
 )
-
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
-    logging.FileHandler("app.log"),
-    logging.StreamHandler()
-])
 
 # Setup retry strategy
 retry_strategy = Retry(
@@ -56,8 +47,6 @@ def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     return Image.open(buffered)
 
 def describe_image(image, content_prompt):
-    logging.info("Describing image")
-    
     # Resize and compress the image to reduce base64 size
     image = resize_and_compress_image(image)
 
@@ -115,20 +104,89 @@ def describe_image(image, content_prompt):
             stream=False
         )
         description = completion.choices[0].message.content
-        logging.info("Image description received")
     except Exception as e:
-        logging.error(f"Failed to generate completion. Error: {e}")
         raise SystemExit(f"Failed to generate completion. Error: {e}")
     
     return description
 
 def describe_images(images, content_prompt):
-    logging.info("Describing images")
     descriptions = []
     for image in images:
         description = describe_image(image, content_prompt)
         descriptions.append(description)
-    logging.info("Image descriptions received")
+    return descriptions
+
+def describe_images_batch(images, content_prompt, batch_size=38):
+    descriptions = []
+    
+    # Split images into batches
+    for i in range(0, len(images), batch_size):
+        batch = images[i:i + batch_size]
+        
+        # Resize and compress images to reduce base64 size
+        resized_images = [resize_and_compress_image(image) for image in batch]
+        
+        # Convert images to base64
+        def image_to_base64(img):
+            buffered = io.BytesIO()
+            img.save(buffered, format="JPEG")
+            return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        
+        encoded_images = [image_to_base64(image) for image in resized_images]
+        
+        # Log the number of images sent in this request
+        logging.info(f"Sending {len(encoded_images)} images in this request to OpenAI")
+
+        # Prepare the chat prompt
+        chat_prompt = [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "You are an AI assistant that helps people find information."
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": content_prompt
+                    },
+                    {
+                        "type": "image_urls",
+                        "image_urls": [
+                            {"url": f"data:image/jpeg;base64,{encoded_image}"} for encoded_image in encoded_images
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "text": "\n"
+                    }
+                ]
+            }
+        ]
+        
+        # Generate the completion
+        try:
+            completion = client.chat.completions.create(
+                model=deployment,
+                messages=chat_prompt,
+                max_tokens=4096,
+                temperature=0,
+                top_p=0.95,
+                frequency_penalty=0,
+                presence_penalty=0,
+                stop=None,
+                stream=False
+            )
+            batch_descriptions = [choice.message.content for choice in completion.choices]
+            descriptions.extend(batch_descriptions)
+        except Exception as e:
+            raise SystemExit(f"Failed to generate completion. Error: {e}")
+    
     return descriptions
 
 def handle_image_upload(uploaded_file):
@@ -144,7 +202,6 @@ def handle_image_upload(uploaded_file):
     img.save(frame_path, format='JPEG')
     frames = [frame_path]
     st.write("Uploaded image.")
-    logging.info("Uploaded image.")
     return frames
 
 def handle_video_upload(uploaded_file, sample_rate):
@@ -156,7 +213,6 @@ def handle_video_upload(uploaded_file, sample_rate):
     st.video(video_path)
     frames = extract_frames(video_path, sample_rate=sample_rate)
     st.write(f"Extracted {len(frames)} frames from the video.")
-    logging.info(f"Extracted {len(frames)} frames from the video.")
     return frames
 
 def run_video_summary():
@@ -171,6 +227,7 @@ def run_video_summary():
             format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
             index=0
         )
+        start_time = time.time()
         if uploaded_file.type.startswith("video"):
             frames = handle_video_upload(uploaded_file, sample_rate)
         else:
@@ -178,15 +235,21 @@ def run_video_summary():
 
         # Step 2: Analyze frames and generate descriptions
         images = [Image.open(frame_path) for frame_path in frames]
-        descriptions = describe_images(images, "Describe what you see in Hebrew:")
+        descriptions = describe_images_batch(images, "Describe what you see in Hebrew:")
         st.write("Analyzed frames and generated descriptions.")
-        logging.info("Analyzed frames and generated descriptions.")
 
         # Step 3: Summarize descriptions
         summary = summarize_descriptions(descriptions)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
         st.write("Summary:")
         st.write(summary)
-        logging.info("Summary generated.")
+        st.write(f"Time taken to analyze the video: {elapsed_time:.2f} seconds")
+        logging.info(f"Summary generated. Time taken: {elapsed_time:.2f} seconds")  # Keep this line
+        print(f"Debug: Time taken to analyze the video: {elapsed_time:.2f} seconds")
+
+        # Display the time taken in the UI
+        st.write(f"Time taken to process the video: {elapsed_time:.2f} seconds")
 
         # Clean up temporary files
         temp_dir = os.path.join(os.getcwd(), 'temp')
@@ -194,6 +257,8 @@ def run_video_summary():
             os.remove(file_path)
         if os.path.exists(temp_dir) and not os.listdir(temp_dir):
             os.rmdir(temp_dir)
+    else:
+        st.write("No file uploaded.")
 
 def summarize_frame(frame_image):
     # Implement your frame summarization logic here
@@ -201,19 +266,13 @@ def summarize_frame(frame_image):
     return "A new object appeared in the frame"
 
 def summarize_video_segment(segment_path):
-    logging.info("Summarizing video segment")
-    logging.info(f"Received video segment: {segment_path}")
-
     # Extract key frames from the video segment
     frames = extract_frames(segment_path, sample_rate=1)  # Sample 1 frame per second
-    logging.info(f"Extracted {len(frames)} frames from the video segment.")
 
     # Describe each frame
     images = [Image.open(frame_path) for frame_path in frames]
     descriptions = describe_images(images, "Describe what you see in Hebrew:")
-    logging.info("Generated descriptions for frames.")
 
     # Summarize the descriptions
     summary = summarize_descriptions(descriptions)
-    logging.info("Generated summary for video segment.")
     return summary
