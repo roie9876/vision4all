@@ -37,15 +37,19 @@ http.mount("http://", adapter)
 def run_detect_objects():
     st.title("Detect Objects in Video/Image")
 
-    # Step 1: User uploads a video or image
+    fps_options = [0.5, 1, 2, 5]
+    selected_fps = st.selectbox("Choose frames per second (FPS)", fps_options, index=1)
+
     uploaded_file = st.file_uploader("Choose a video or image...", type=["mp4", "avi", "mov", "mkv", "jpg", "jpeg", "png"])
+    frames = None
     if uploaded_file is not None:
         if uploaded_file.type in ["video/mp4", "video/x-msvideo", "video/quicktime", "video/x-matroska"]:
             tfile = tempfile.NamedTemporaryFile(delete=False)
             tfile.write(uploaded_file.read())
             video_path = tfile.name
             st.video(video_path)
-            frames = extract_frames(video_path)
+            st.write(f"Extracting frames at {selected_fps} FPS.")
+            frames = extract_frames(video_path, fps=selected_fps)
             st.write(f"Extracted {len(frames)} frames from the video.")
         else:
             img = Image.open(uploaded_file)
@@ -56,21 +60,43 @@ def run_detect_objects():
             frames = [frame_path]
             st.write("Uploaded image.")
 
-        # Step 2: Detect objects in frames
-        content_prompt = st.text_input(
-            "Enter the content prompt:",
-            value="List all objects in this image in Hebrew, for each object add description like color, shape, material etc in Hebrew"
-        )
+    content_prompt = st.text_input(
+        "Enter the content prompt:",
+        value="List all objects in this image in Hebrew"
+    )
+
+    if st.button("Process") and frames is not None:
         objects_list = []
         for frame_path in frames:
             objects = detect_objects_in_image(Image.open(frame_path))
             objects_list.append(objects)
-        st.markdown("<h3>Detected objects in frames</h3>", unsafe_allow_html=True)
 
-        # Step 3: Display detected objects
-        for i, objects in enumerate(objects_list):
-            items_html = ''.join(f"<li>{obj}</li>" for obj in objects)
-            st.markdown(
-                f"<strong>Frame {i+1}:</strong><ul>{items_html}</ul>",
-                unsafe_allow_html=True
-            )
+        # Removed the code that displays objects per frame
+
+        # Aggregate all objects across frames
+        all_objects = []
+        for frame_objs in objects_list:
+            all_objects.extend(frame_objs)
+        unique_objects = list(set(all_objects))
+        comma_sep_objects = ", ".join(unique_objects)
+
+        # Summarize locally
+        summary = summarize_descriptions([comma_sep_objects])
+
+        st.markdown("<h3>All Objects (Comma-Separated)</h3>", unsafe_allow_html=True)
+        st.write(comma_sep_objects)
+        #st.markdown("<h3>Summary of All Objects</h3>", unsafe_allow_html=True)
+        #st.write(summary)
+
+def summarize_text(text):
+    # ...logic from utils.summarize_text...
+    # define a local variable to avoid the NameError
+    summary = "תמצית"  # or any temporary placeholder
+    return summary
+
+def summarize_descriptions(descriptions):
+    # ...logic from utils.summarize_descriptions...
+    combined_text = " ".join(descriptions)
+    initial_summary = summarize_text(combined_text)
+    final_summary = summarize_text(initial_summary)
+    return final_summary
