@@ -1,7 +1,6 @@
 import streamlit as st
 import tempfile
 import os
-import logging
 import io
 import base64
 import requests
@@ -12,6 +11,16 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import concurrent.futures
+import logging
+
+# Setup logging configuration
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
+    logging.FileHandler("app.log"),
+    logging.StreamHandler()
+])
+
+# Test log message to ensure logging is working
+logging.debug("Logging is configured correctly in detected_objects.py")
 
 # Load environment variables
 load_dotenv()

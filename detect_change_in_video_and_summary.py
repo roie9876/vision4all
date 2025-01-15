@@ -13,6 +13,15 @@ import requests
 import yolo_model
 from openai import AzureOpenAI
 
+# Setup logging configuration
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
+    logging.FileHandler("app.log"),
+    logging.StreamHandler()
+])
+
+# Test log message to ensure logging is working
+logging.debug("Logging is configured correctly in detect_change_in_video_and_summary.py")
+
 # Load environment variables
 load_dotenv()
 
@@ -22,22 +31,12 @@ deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 subscription_key = os.getenv("AZURE_OPENAI_KEY")
 api_version = os.getenv("AZURE_OPENAI_API_VERSION")
 
-# Log environment variables for debugging
-logging.info(f"Endpoint: {endpoint}")
-logging.info(f"Deployment: {deployment}")
-
 # Initialize the Azure OpenAI client
 client = AzureOpenAI(
     azure_endpoint=endpoint,
     api_key=subscription_key,
     api_version=api_version
 )
-
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
-    logging.FileHandler("app.log"),
-    logging.StreamHandler()
-])
 
 # Setup retry strategy
 retry_strategy = Retry(
@@ -228,6 +227,14 @@ def format_timestamp(seconds):
     seconds = int(seconds % 60)
     return f"{minutes:02}:{seconds:02}"
 
+def create_segments(total_frames, frame_rate, segment_length):
+    segments = []
+    for i in range(0, total_frames, segment_length):
+        start_frame = i
+        end_frame = min(i + segment_length, total_frames)
+        segments.append((start_frame, end_frame))
+    return segments
+
 def run_detect_change_in_video_and_summary():
     st.subheader("Detect Change in Video and Summary")
     st.write("Upload video capture to detect changes and summarize them.")
@@ -264,3 +271,17 @@ def run_detect_change_in_video_and_summary():
             os.remove(frame_path)
         os.remove(video_path)  # Delete the original uploaded video file
         os.remove(final_output_path)
+
+def main():
+    total_frames = 427
+    frame_rate = 25.0
+    segment_length = total_frames // 4  # Adjusted to create 4 segments from 427 frames
+    segments = create_segments(total_frames, frame_rate, segment_length)
+    for idx, (start_frame, end_frame) in enumerate(segments):
+        print(f"Creating segment {idx + 1}: start_frame={start_frame}, end_frame={end_frame}")
+        # ...existing code for segment creation...
+        if start_frame < total_frames:
+            print(f"Segment {idx + 1} created successfully")
+        else:
+            print(f"Segment {idx + 1} creation failed")
+    print(f"Total segments created: {len(segments)}")

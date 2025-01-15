@@ -1,18 +1,27 @@
 import io
 import base64
 import requests
-import logging
 import tempfile
 import cv2
 from PIL import Image
 import os
+import logging
+
+# Setup logging configuration
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
+    logging.FileHandler("app.log"),
+    logging.StreamHandler()
+])
+
+# Test log message to ensure logging is working
+logging.debug("Logging is configured correctly in utils.py")
 
 # Load environment variables
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    logging.warning("dotenv package not found. Skipping loading environment variables from .env file.")
+    pass
 
 # Configuration
 API_KEY = os.getenv("AZURE_OPENAI_KEY")
@@ -58,24 +67,28 @@ def extract_video_segment(video_path, start_time, end_time):
     frame_rate = video.get(cv2.CAP_PROP_FPS)
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     
+    logging.debug(f"Extracting segment: start_time={start_time}, end_time={end_time}, frame_rate={frame_rate}, total_frames={total_frames}")
+
     # Clamp timestamps
     if start_time < 0:
         start_time = 0
     if end_time < 0:
         end_time = 0
     if end_time <= start_time:
-        logging.error("Invalid segment times")
         video.release()
+        logging.debug("Invalid segment times, returning None")
         return None
 
     start_frame = int(start_time * frame_rate)
     end_frame = int(end_time * frame_rate)
     if start_frame >= total_frames:
-        logging.error("Start frame exceeds total frames")
         video.release()
+        logging.debug("Start frame is beyond total frames, returning None")
         return None
     if end_frame > total_frames:
         end_frame = total_frames
+
+    logging.debug(f"Start frame: {start_frame}, End frame: {end_frame}")
 
     video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     
@@ -83,6 +96,7 @@ def extract_video_segment(video_path, start_time, end_time):
     for _ in range(start_frame, end_frame):
         success, image = video.read()
         if not success or image is None:
+            logging.debug("Failed to read frame or image is None")
             break
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
         cv2.imwrite(temp_file.name, image)
@@ -90,7 +104,7 @@ def extract_video_segment(video_path, start_time, end_time):
     video.release()
     
     if not segment_frames:
-        logging.error("Failed to extract video segment: no frames extracted")
+        logging.debug("No frames extracted, returning None")
         return None
     
     first_frame = cv2.imread(segment_frames[0])
@@ -105,10 +119,10 @@ def extract_video_segment(video_path, start_time, end_time):
     for frame_path in segment_frames:
         os.remove(frame_path)
     
+    logging.debug(f"Segment created at {segment_path}")
     return segment_path
 
 def summarize_text(text):
-    logging.info("Summarizing text")
     # Headers and payload for the request
     headers = {
         "Content-Type": "application/json",
@@ -135,23 +149,19 @@ def summarize_text(text):
         response = http.post(ENDPOINT, headers=headers, json=payload)
         response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
     except requests.RequestException as e:
-        logging.error(f"Failed to make the request. Error: {e}")
         raise SystemExit(f"Failed to make the request. Error: {e}")
 
     # Extract summary from response
     summary = response.json()['choices'][0]['message']['content']
-    logging.info("Summary generated")
     return summary
 
 def summarize_descriptions(descriptions):
-    logging.info("Summarizing descriptions")
     combined_text = " ".join(descriptions)
     initial_summary = summarize_text(combined_text)
     final_summary = summarize_text(initial_summary)
     return final_summary
 
 def detect_objects_in_image(image):
-    logging.info("Detecting objects in image")
     # Convert image to bytes and encode to base64
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PNG')
@@ -208,12 +218,10 @@ def detect_objects_in_image(image):
         response = http.post(ENDPOINT, headers=headers, json=payload)
         response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
     except requests.RequestException as e:
-        logging.error(f"Failed to make the request. Error: {e}")
         raise SystemExit(f"Failed to make the request. Error: {e}")
 
     # Extract objects from response
     objects = response.json()['choices'][0]['message']['content']
-    logging.info("Objects detected in image")
     return objects.split(", ")
 
 def image_similarity(img1, img2):
