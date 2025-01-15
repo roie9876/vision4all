@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import time
+import concurrent.futures
 
 # Load environment variables
 load_dotenv()
@@ -212,7 +213,6 @@ def handle_video_upload(uploaded_file, sample_rate):
     video_path = tfile.name
     st.video(video_path)
     frames = extract_frames(video_path, sample_rate=sample_rate)
-    st.write(f"Extracted {len(frames)} frames from the video.")
     return frames
 
 def run_video_summary():
@@ -232,6 +232,15 @@ def run_video_summary():
             frames = handle_video_upload(uploaded_file, sample_rate)
         else:
             frames = handle_image_upload(uploaded_file)
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Process frames in parallel
+            objects_list = list(
+                executor.map(
+                    lambda fp: detect_objects_in_image(Image.open(fp)),
+                    frames
+                )
+            )
 
         # Step 2: Analyze frames and generate descriptions
         images = [Image.open(frame_path) for frame_path in frames]

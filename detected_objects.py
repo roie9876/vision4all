@@ -38,56 +38,66 @@ http.mount("http://", adapter)
 def run_detect_objects():
     st.title("Detect Objects in Video/Image")
 
-    fps_options = [0.5, 1, 2, 5]
-    selected_fps = st.selectbox("Choose frames per second (FPS)", fps_options, index=1)
-
-    uploaded_file = st.file_uploader("Choose a video or image...", type=["mp4", "avi", "mov", "mkv", "jpg", "jpeg", "png"])
-    frames = None
-    if uploaded_file is not None:
-        if uploaded_file.type in ["video/mp4", "video/x-msvideo", "video/quicktime", "video/x-matroska"]:
-            tfile = tempfile.NamedTemporaryFile(delete=False)
-            tfile.write(uploaded_file.read())
-            video_path = tfile.name
-            st.video(video_path)
-            st.write(f"Extracting frames at {selected_fps} FPS.")
-            frames = extract_frames(video_path, fps=selected_fps)
-            st.write(f"Extracted {len(frames)} frames from the video.")
-        else:
-            img = Image.open(uploaded_file)
-            st.image(img, caption='Uploaded Image', use_container_width=True)
-            temp_dir = tempfile.mkdtemp()
-            frame_path = os.path.join(temp_dir, f"{uploaded_file.name}.png")
-            img.save(frame_path)
-            frames = [frame_path]
-            st.write("Uploaded image.")
-
-    content_prompt = st.text_input(
-        "Enter the content prompt:",
-        value="List objects in this image in Hebrew. Include: אנשים, סוגי יחדות, כומות, דרגות, סוג מדים, כלים צבאיים, סוגי נשקים, האם זה יום או לילה, מקום דור או פתוח, סוג מבנה, נוף הצילום כמו מדבר או ירוק"
+    # Allow multiple files
+    uploaded_files = st.file_uploader(
+        "Choose video files...", 
+        type=["mp4", "avi", "mov", "mkv"], 
+        accept_multiple_files=True
     )
 
-    if st.button("Process") and frames is not None:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            objects_list = list(
-                executor.map(
-                    lambda fp: detect_objects_in_image(Image.open(fp)), 
-                    frames
-                )
-            )
-        
-        # Aggregate all objects across frames using OpenAI summarization
-        all_objects = []
-        for frame_objs in objects_list:
-            all_objects.extend(frame_objs)
-        combined_objects = " ".join(all_objects)
+    if uploaded_files:
+        # Display loaded videos
+        st.markdown("### Loaded Videos")
+        loaded_videos = [uploaded_file.name for uploaded_file in uploaded_files]
+        st.text_area("Loaded Videos", "\n".join(loaded_videos), height=200, disabled=True)
 
-        # Summarize locally to remove duplicates
-        summary = summarize_text(combined_objects)
+        if st.button("Process"):
+            # Create placeholders for process status
+            processing_box = st.empty()
+            finished_box = st.empty()
 
-        st.markdown("<h3>All Objects (Comma-Separated)</h3>", unsafe_allow_html=True)
-        st.write(summary)
-        #st.markdown("<h3>Summary of All Objects</h3>", unsafe_allow_html=True)
-        #st.write(summary)
+            # Create directory for saving detected objects
+            save_folder = os.path.join("detected objects", "processed_videos")
+            os.makedirs(save_folder, exist_ok=True)
+
+            processing_videos = []
+            finished_videos = []
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                for uploaded_file in uploaded_files:
+                    video_name = uploaded_file.name
+                    processing_videos.append(video_name)
+                    loaded_videos.remove(video_name)
+                    
+                    processing_box.text_area("Processing Videos", "\n".join(processing_videos), height=200, disabled=True)
+                    
+                    # Save temporary file
+                    tfile = tempfile.NamedTemporaryFile(delete=False)
+                    tfile.write(uploaded_file.read())
+                    video_path = tfile.name
+                    frames = extract_frames(video_path, sample_rate=1.0)
+                    # Detect objects in frames
+                    objects_list = list(
+                        executor.map(
+                            lambda fp: detect_objects_in_image(Image.open(fp)),
+                            frames
+                        )
+                    )
+                    # Summarize using OpenAI
+                    all_objects = []
+                    for frame_objs in objects_list:
+                        all_objects.extend(frame_objs)
+                    combined_objects = " ".join(all_objects)
+                    summary = summarize_text(combined_objects)
+                    # Write to text file
+                    text_file_path = os.path.join(save_folder, f"{video_name}.txt")
+                    with open(text_file_path, "w", encoding="utf-8") as f:
+                        f.write(summary)
+
+                    processing_videos.remove(video_name)
+                    finished_videos.append(video_name)
+                    
+                    finished_box.text_area("Finished Videos", "\n".join(finished_videos), height=200, disabled=True)
 
 def summarize_text(text):
     logging.info("Summarizing text")

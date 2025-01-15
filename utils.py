@@ -33,13 +33,13 @@ http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
 
-def extract_frames(video_path, fps=1.0):
+def extract_frames(video_path, sample_rate=1.0):
     """
-    Extract frames from a video at the specified fps.
+    Extract frames from a video at the specified sample rate.
     """
     video = cv2.VideoCapture(video_path)
     frame_rate = video.get(cv2.CAP_PROP_FPS)
-    frame_interval = int(frame_rate // fps) if fps > 0 else 1
+    frame_interval = int(frame_rate // sample_rate) if sample_rate > 0 else 1
     frames = []
     success, image = video.read()
     count = 0
