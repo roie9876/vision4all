@@ -11,6 +11,7 @@ from openai import AzureOpenAI
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+import concurrent.futures
 
 # Load environment variables
 load_dotenv()
@@ -62,40 +63,70 @@ def run_detect_objects():
 
     content_prompt = st.text_input(
         "Enter the content prompt:",
-        value="List all objects in this image in Hebrew"
+        value="List objects in this image in Hebrew. Include: אנשים, סוגי יחדות, כומות, דרגות, סוג מדים, כלים צבאיים, סוגי נשקים, האם זה יום או לילה, מקום דור או פתוח, סוג מבנה, נוף הצילום כמו מדבר או ירוק"
     )
 
     if st.button("Process") and frames is not None:
-        objects_list = []
-        for frame_path in frames:
-            objects = detect_objects_in_image(Image.open(frame_path))
-            objects_list.append(objects)
-
-        # Removed the code that displays objects per frame
-
-        # Aggregate all objects across frames
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            objects_list = list(
+                executor.map(
+                    lambda fp: detect_objects_in_image(Image.open(fp)), 
+                    frames
+                )
+            )
+        
+        # Aggregate all objects across frames using OpenAI summarization
         all_objects = []
         for frame_objs in objects_list:
             all_objects.extend(frame_objs)
-        unique_objects = list(set(all_objects))
-        comma_sep_objects = ", ".join(unique_objects)
+        combined_objects = " ".join(all_objects)
 
-        # Summarize locally
-        summary = summarize_descriptions([comma_sep_objects])
+        # Summarize locally to remove duplicates
+        summary = summarize_text(combined_objects)
 
         st.markdown("<h3>All Objects (Comma-Separated)</h3>", unsafe_allow_html=True)
-        st.write(comma_sep_objects)
+        st.write(summary)
         #st.markdown("<h3>Summary of All Objects</h3>", unsafe_allow_html=True)
         #st.write(summary)
 
 def summarize_text(text):
-    # ...logic from utils.summarize_text...
-    # define a local variable to avoid the NameError
-    summary = "תמצית"  # or any temporary placeholder
+    logging.info("Summarizing text")
+    # Headers and payload for the request
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": os.getenv("AZURE_OPENAI_KEY"),
+    }
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an AI assistant that helps people find information."
+            },
+            {
+                "role": "user",
+                "content": f"Summarize the following text in Hebrew in comma separated format, ensuring no duplicates: {text}"
+            }
+        ],
+        "temperature": 0.2,
+        "top_p": 0.95,
+        "max_tokens": 4096
+    }
+
+    # Send request
+    try:
+        response = http.post(os.getenv("AZURE_OPENAI_ENDPOINT"), headers=headers, json=payload)
+        response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
+    except requests.RequestException as e:
+        logging.error(f"Failed to make the request. Error: {e}")
+        raise SystemExit(f"Failed to make the request. Error: {e}")
+
+    # Extract summary from response
+    summary = response.json()['choices'][0]['message']['content']
+    logging.info("Summary generated")
     return summary
 
 def summarize_descriptions(descriptions):
-    # ...logic from utils.summarize_descriptions...
+    logging.info("Summarizing descriptions")
     combined_text = " ".join(descriptions)
     initial_summary = summarize_text(combined_text)
     final_summary = summarize_text(initial_summary)
