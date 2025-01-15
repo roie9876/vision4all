@@ -69,6 +69,8 @@ def run_search_object_in_image():
 
 def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     image.thumbnail(max_size, Image.LANCZOS)
+    if image.mode == 'RGBA':
+        image = image.convert('RGB')
     buffered = io.BytesIO()
     image.save(buffered, format="JPEG", quality=quality)
     return Image.open(buffered)
@@ -96,7 +98,7 @@ def detect_object_in_image(ref_image, target_image, description):
             "content": [
                 {
                     "type": "text",
-                    "text": "You are an AI assistant that helps people find information."
+                    "text": " אל תענה בכן ולא, עליך לבצע ניתוח מעמיק. ולדרג עד כמה אתה בטוח בתשובה שלך באחוזים"
                 }
             ]
         },
@@ -125,7 +127,7 @@ def detect_object_in_image(ref_image, target_image, description):
                 },
                 {
                     "type": "text",
-                    "text": f"האם אתה רואה את אותו {description}  בתמונת המקור והיעד ?"
+                    "text": f"האם אתה רואה את אותו {description}  בתמונת המקור והיעד"
                 }
             ]
         }

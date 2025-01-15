@@ -61,7 +61,7 @@ def detect_object_in_image(ref_image, target_image, description):
             "content": [
                 {
                     "type": "text",
-                    "text": "You are an AI assistant that helps people find information."
+                      "text": " אל תענה בכן ולא, עליך לבצע ניתוח מעמיק. ולדרג עד כמה אתה בטוח בתשובה שלך באחוזים"
                 }
             ]
         },
@@ -90,7 +90,7 @@ def detect_object_in_image(ref_image, target_image, description):
                 },
                 {
                     "type": "text",
-                    "text": f"האם אתה רואה את אותו {description} בתכתוב רק אם  בתמונת המקור והיעד ?"
+                    "text": f"האם אתה רואה את אותו {description}  בתמונת המקור והיעד"
                 }
             ]
         }
@@ -100,8 +100,8 @@ def detect_object_in_image(ref_image, target_image, description):
     response = client.chat.completions.create(
         model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
         messages=chat_prompt,
-        max_tokens=800,
-        temperature=0.7,
+        max_tokens=4096,
+        temperature=0.1,
         top_p=0.95,
         frequency_penalty=0,
         presence_penalty=0,

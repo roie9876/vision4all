@@ -133,6 +133,43 @@ def describe_images(images):
     logging.info("Image descriptions received")
     return descriptions
 
+def summarize_text(text):
+    logging.info("Summarizing text with OpenAI")
+    prompt = (
+        "Summarize the following text in Hebrew. focus on pepole description, cars etc:\n" + text
+    )
+
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": subscription_key,
+    }
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an AI assistant that helps people find information."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "temperature": 0.2,
+        "top_p": 0.95,
+        "max_tokens": 4096
+    }
+
+    try:
+        response = http.post(endpoint, headers=headers, json=payload)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logging.error(f"Failed to make the request. Error: {e}")
+        raise SystemExit(f"Failed to make the request. Error: {e}")
+
+    summary = response.json()['choices'][0]['message']['content']
+    logging.info("Text summarization received")
+    return summary
+
 def detect_changes_with_openai(frames):
     logging.info("Detecting changes with OpenAI")
     descriptions = describe_images(frames)
@@ -181,7 +218,10 @@ def detect_changes_with_openai(frames):
 
     # Combine all summaries into a final summary
     final_summary = "\n".join(summaries)
-    return final_summary
+    
+    # Summarize the final summary text
+    summarized_text = summarize_text(final_summary)
+    return summarized_text
 
 def format_timestamp(seconds):
     minutes = int(seconds // 60)
