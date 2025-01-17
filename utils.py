@@ -161,7 +161,8 @@ def summarize_descriptions(descriptions):
     final_summary = summarize_text(initial_summary)
     return final_summary
 
-def detect_objects_in_image(image):
+def detect_objects_in_image(image, interesting_objects):
+    logging.info("Detecting objects in image")
     # Convert image to bytes and encode to base64
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PNG')
@@ -189,7 +190,7 @@ def detect_objects_in_image(image):
                 "content": [
                     {
                         "type": "text",
-                        "text": "List all objects in this image in Hebrew"
+                        "text": "List all" + interesting_objects + "in this image in Hebrew"
                     },
                     {
                         "type": "text",
@@ -218,10 +219,12 @@ def detect_objects_in_image(image):
         response = http.post(ENDPOINT, headers=headers, json=payload)
         response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
     except requests.RequestException as e:
+        logging.error(f"Failed to make the request. Error: {e}")
         raise SystemExit(f"Failed to make the request. Error: {e}")
 
     # Extract objects from response
     objects = response.json()['choices'][0]['message']['content']
+    logging.info("Objects detected in image")
     return objects.split(", ")
 
 def image_similarity(img1, img2):
@@ -231,3 +234,84 @@ def image_similarity(img1, img2):
     # Compute SSIM between two images
     score, _ = structural_similarity(img1_gray, img2_gray, full=True)
     return score > 0.9
+
+def describe_images_batch(images, content_prompt, batch_size=38):
+    descriptions = []
+    total_tokens_used = 0  # Initialize total tokens used
+    
+    # Split images into batches
+    for i in range(0, len(images), batch_size):
+        batch = images[i:i + batch_size]
+        
+        # Resize and compress images to reduce base64 size
+        resized_images = [resize_and_compress_image(image) for image in batch]
+        
+        # Convert images to base64
+        def image_to_base64(img):
+            buffered = io.BytesIO()
+            img.save(buffered, format="JPEG")
+            return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        
+        encoded_images = [image_to_base64(image) for image in resized_images]
+        
+        # Log the number of images sent in this request
+        logging.info(f"Sending {len(encoded_images)} images in this request to OpenAI")
+
+        # Prepare the chat prompt
+        chat_prompt = [
+            {
+                "role": "system",
+                "content": "You are an AI assistant that helps people find information."
+            },
+            {
+                "role": "user",
+                "content": content_prompt
+            },
+            {
+                "role": "user",
+                "content": [
+                    f"data:image/jpeg;base64,{encoded_image}" for encoded_image in encoded_images
+                ]
+            }
+        ]
+        
+        # Log the chat prompt for debugging
+        logging.debug(f"Chat prompt: {chat_prompt}")
+
+        # Generate the completion
+        try:
+            completion = client.completions.create(
+                model=deployment,
+                messages=chat_prompt,
+                max_tokens=4096,
+                temperature=0,
+                top_p=0.95,
+                frequency_penalty=0,
+                presence_penalty=0,
+                stop=None,
+                stream=False
+            )
+            batch_descriptions = [choice.message.content for choice in completion.choices]
+            descriptions.extend(batch_descriptions)
+            
+            # Log the API response for debugging
+            logging.debug(f"API response: {completion}")
+    
+            # Accumulate total tokens used
+            if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_tokens'):
+                total_tokens_used += completion.usage.total_tokens
+            else:
+                logging.warning("Total tokens used not found in the API response.")
+        except Exception as e:
+            logging.error(f"Failed to generate completion. Error: {e}")
+            raise SystemExit(f"Failed to generate completion. Error: {e}")
+    
+    return descriptions, total_tokens_used
+
+def resize_and_compress_image(image, max_size=(800, 800), quality=95):
+    image.thumbnail(max_size, Image.LANCZOS)
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG", quality=quality)
+    return Image.open(buffered)
+
+# ...existing code...

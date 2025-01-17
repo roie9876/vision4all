@@ -1,6 +1,7 @@
 import streamlit as st
 import tempfile
 import os
+import logging
 import io
 import base64
 import requests
@@ -11,16 +12,6 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import concurrent.futures
-import logging
-
-# Setup logging configuration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
-    logging.FileHandler("app.log"),
-    logging.StreamHandler()
-])
-
-# Test log message to ensure logging is working
-logging.debug("Logging is configured correctly in detected_objects.py")
 
 # Load environment variables
 load_dotenv()
@@ -53,6 +44,9 @@ def run_detect_objects():
         type=["mp4", "avi", "mov", "mkv"], 
         accept_multiple_files=True
     )
+
+    # Add a text input field for the user to input the interesting objects parameter
+    interesting_objects = st.text_input("Enter the interesting objects (default: סוגי כלי רכב,פרטי לבוש:", value="סוגי כלי רכב,פרטי לבוש")
 
     if uploaded_files:
         # Display loaded videos
@@ -88,13 +82,15 @@ def run_detect_objects():
                     # Detect objects in frames
                     objects_list = list(
                         executor.map(
-                            lambda fp: detect_objects_in_image(Image.open(fp)),
+                            lambda fp: detect_objects_in_image(Image.open(fp), interesting_objects),
                             frames
                         )
                     )
                     # Summarize using OpenAI
                     all_objects = []
                     for frame_objs in objects_list:
+                        if frame_objs is None:
+                            frame_objs = []  # Ensure frame_objs is a list
                         all_objects.extend(frame_objs)
                     combined_objects = " ".join(all_objects)
                     summary = summarize_text(combined_objects)
