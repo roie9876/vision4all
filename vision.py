@@ -40,7 +40,8 @@ from video_summary_video import (
     handle_video_upload,
     analyze_frames,
     split_video_into_segments,
-    process_segment
+    process_segment,
+    calculate_price  # Add this import
 )
 # Load environment variables
 load_dotenv()
@@ -70,6 +71,11 @@ http.mount("http://", adapter)
 # --------------------------------------------------
 def run_video_summary():
     st.title("Video/Image Summary")
+
+    # Delete 'temp_segments' folder at start
+    temp_segments_dir = os.path.join(os.getcwd(), 'temp_segments')
+    if os.path.exists(temp_segments_dir):
+        shutil.rmtree(temp_segments_dir)
 
     uploaded_file = st.file_uploader(
         "Choose a video or image...",
@@ -120,10 +126,10 @@ def run_video_summary():
                 for seg_path in segment_paths
             ]
             for future in concurrent.futures.as_completed(futures):
-                desc, tokens_used = future.result()  # Adjust to handle only two returned values
+                desc, tokens_used, frames_processed = future.result()  # Adjust to handle three returned values
                 descriptions.append(desc)
                 total_tokens_sum += tokens_used
-                # total_frames += frames_processed  # Remove this line if frames_processed is not returned
+                total_frames += frames_processed  # Update total frames
 
         # 4. Summarize the segment descriptions
         summary_text = summarize_descriptions(descriptions)
@@ -132,7 +138,12 @@ def run_video_summary():
         st.write("### Summary:")
         st.write(summary_text)
         st.write(f"Total tokens used: {total_tokens_sum}")
-        # st.write(f"Total frames extracted: {total_frames}")  # Remove this line if frames_processed is not returned
+        st.write(f"Total frames extracted: {total_frames}")  # Display total frames
+
+        # Calculate and display the price
+        price = calculate_price(total_tokens_sum)
+        st.write(f"Price: ${price:.4f}")
+
         elapsed_time = time.time() - start_time
         st.write(f"Total time taken to analyze: {elapsed_time:.2f} seconds")  # Display total time taken
         # logging.info(f"Summary generated in {elapsed_time:.2f} seconds")
