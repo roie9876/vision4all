@@ -14,6 +14,7 @@ Vision-4all is a Streamlit-based application that allows users to analyze images
 
 - Python 3.11 
 - Azure OpenAI API key and endpoint
+- For Windows OS install Visual C++ Redistributables:
 
 ### Installation
 

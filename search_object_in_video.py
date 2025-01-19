@@ -12,6 +12,7 @@ from requests.adapters import HTTPAdapter
 from openai import AzureOpenAI
 from requests.packages.urllib3.util.retry import Retry
 from detect_change_in_video_and_summary import run_detect_change_in_video_and_summary
+import time
 
 load_dotenv()
 
@@ -109,6 +110,101 @@ def detect_object_in_image(ref_image, target_image, description):
         stream=False
     )
 
+    # Try extracting usage if available
+    if hasattr(response, "usage") and response.usage:
+        st.session_state.total_tokens_used += response.usage.total_tokens
+
+    # Log the full response
+    # logging.debug(f"Response: {response}")
+
+    # Parse the response
+    try:
+        result_text = response.choices[0].message.content
+        # logging.debug(f"Result text: {result_text}")
+    except Exception as e:
+        # logging.error(f"Error parsing response: {e}")
+        result_text = "Error occurred while processing the images."
+
+    return result_text
+
+def detect_objects_in_images(ref_image, target_images, description):
+    # logging.debug("Entered detect_objects_in_images function")
+    
+    # Resize and compress reference image to reduce base64 size
+    ref_image = resize_and_compress_image(ref_image)
+
+    # Convert reference image to base64
+    def image_to_base64(img):
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG")
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+    ref_image_base64 = image_to_base64(ref_image)
+
+    # Prepare the chat prompt
+    chat_prompt = [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": " אל תענה בכן ולא, עליך לבצע ניתוח מעמיק. ולדרג עד כמה אתה בטוח בתשובה שלך באחוזים"
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "\n"
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{ref_image_base64}"
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "\n"
+                }
+            ]
+        }
+    ]
+
+    # Add target images to the chat prompt
+    for target_image in target_images:
+        target_image = resize_and_compress_image(target_image)
+        target_image_base64 = image_to_base64(target_image)
+        chat_prompt[1]["content"].append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{target_image_base64}"
+            }
+        })
+        chat_prompt[1]["content"].append({
+            "type": "text",
+            "text": f"האם אתה רואה את אותו {description} בתמונת המקור והיעד"
+        })
+
+    # Generate the completion
+    response = client.chat.completions.create(
+        model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+        messages=chat_prompt,
+        max_tokens=4096,
+        temperature=0.1,
+        top_p=0.95,
+        frequency_penalty=0,
+        presence_penalty=0,
+        stop=None,
+        stream=False
+    )
+
+    # Try extracting usage if available
+    if hasattr(response, "usage") and response.usage:
+        st.session_state.total_tokens_used += response.usage.total_tokens
+
     # Log the full response
     # logging.debug(f"Response: {response}")
 
@@ -150,6 +246,10 @@ def summarize_results(results):
         stream=False
     )
 
+    # Try extracting usage if available
+    if hasattr(response, "usage") and response.usage:
+        st.session_state.total_tokens_used += response.usage.total_tokens
+
     # Log the full response
     # logging.debug(f"Response: {response}")
 
@@ -182,6 +282,12 @@ def run_search_object_in_video():
             )
             uploaded_video = st.file_uploader("Upload a video...", type=["mp4", "avi", "mov", "mkv"])
             if uploaded_video is not None:
+                # Start timer
+                if "total_tokens_used" not in st.session_state:
+                    st.session_state.total_tokens_used = 0
+
+                start_time = time.time()
+
                 tfile = tempfile.NamedTemporaryFile(delete=False)
                 tfile.write(uploaded_video.read())
                 video_path = tfile.name
@@ -189,18 +295,36 @@ def run_search_object_in_video():
 
                 frames = extract_frames(video_path, sample_rate=sample_rate)
                 st.write(f"Extracted {len(frames)} frames from the video.")
-
+                
+                # Batch frames for fewer OpenAI calls
+                batch_size = 5
                 results = []
-                for idx, frame_path in enumerate(frames):
-                    frame_image = Image.open(frame_path)
-                    result_text = detect_object_in_image(ref_image, frame_image, object_description)
+                for i in range(0, len(frames), batch_size):
+                    batch_frames = [Image.open(frame_path) for frame_path in frames[i:i+batch_size]]
+                    result_text = detect_objects_in_images(ref_image, batch_frames, object_description)
                     if "yes" in result_text.lower() or "כן" in result_text.lower():
-                        results.append(f"Frame {idx+1}: {result_text}")
+                        results.append(result_text)
 
                 if results:
                     summary = summarize_results(results)
                     st.write("Summary:")
                     st.write(summary)
+
+                # End timer and calculate duration
+                end_time = time.time()
+                elapsed = end_time - start_time
+                hours = int(elapsed // 3600)
+                minutes = int((elapsed % 3600) // 60)
+                seconds = int(elapsed % 60)
+                elapsed_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                # Approximate cost calculation (example rate):
+                cost_per_1k_tokens = 0.0015
+                total_price = (st.session_state.total_tokens_used / 1000) * cost_per_1k_tokens
+
+                st.write(f"Total analysis time: {elapsed_str}")
+                st.write(f"Total tokens used: {st.session_state.total_tokens_used}")
+                st.write(f"Approximate cost: ${total_price:.4f}")
 
 def main():
     st.title("Video Analysis Tool")
