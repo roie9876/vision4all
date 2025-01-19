@@ -39,7 +39,7 @@ def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     return Image.open(buffered)
 
 def detect_object_in_image(ref_image, target_image, description):
-    logging.debug("Entered detect_object_in_image function")
+    # logging.debug("Entered detect_object_in_image function")
     
     # Resize and compress images to reduce base64 size
     ref_image = resize_and_compress_image(ref_image)
@@ -110,20 +110,20 @@ def detect_object_in_image(ref_image, target_image, description):
     )
 
     # Log the full response
-    logging.debug(f"Response: {response}")
+    # logging.debug(f"Response: {response}")
 
     # Parse the response
     try:
         result_text = response.choices[0].message.content
-        logging.debug(f"Result text: {result_text}")
+        # logging.debug(f"Result text: {result_text}")
     except Exception as e:
-        logging.error(f"Error parsing response: {e}")
+        # logging.error(f"Error parsing response: {e}")
         result_text = "Error occurred while processing the images."
 
     return result_text
 
 def summarize_results(results):
-    logging.debug("Entered summarize_results function")
+    # logging.debug("Entered summarize_results function")
 
     # Prepare the chat prompt for summarization
     chat_prompt = [
@@ -151,14 +151,14 @@ def summarize_results(results):
     )
 
     # Log the full response
-    logging.debug(f"Response: {response}")
+    # logging.debug(f"Response: {response}")
 
     # Parse the response
     try:
         summary_text = response.choices[0].message.content
-        logging.debug(f"Summary text: {summary_text}")
+        # logging.debug(f"Summary text: {summary_text}")
     except Exception as e:
-        logging.error(f"Error parsing response: {e}")
+        # logging.error(f"Error parsing response: {e}")
         summary_text = "Error occurred while summarizing the results."
 
     return summary_text

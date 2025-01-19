@@ -39,14 +39,14 @@ http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
 
-logging.basicConfig(
-    level=logging.DEBUG,  # Change logging level to DEBUG to capture all logs
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app.log"),  # Write logs to app.log
-        logging.StreamHandler()  # Also output logs to the console
-    ]
-)
+# logging.basicConfig(
+#     level=logging.DEBUG,  # Change logging level to DEBUG to capture all logs
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler("app.log"),  # Write logs to app.log
+#         logging.StreamHandler()  # Also output logs to the console
+#     ]
+# )
 
 # Initialize token usage counter
 total_tokens_used = 0
@@ -118,7 +118,7 @@ def describe_image(image, content_prompt):
     ]
 
     # Log the chat prompt for debugging
-    logging.debug(f"Chat prompt: {chat_prompt}")
+    # logging.debug(f"Chat prompt: {chat_prompt}")
 
     # Generate the completion
     try:
@@ -138,11 +138,12 @@ def describe_image(image, content_prompt):
         if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_tokens'):
             total_tokens = completion.usage.total_tokens
             st.write(f"Total tokens used for this completion: {total_tokens}")
-            logging.info(f"Tokens used for this completion: {total_tokens}")
+            # logging.info(f"Tokens used for this completion: {total_tokens}")
         else:
-            logging.warning("Total tokens used not found in the API response.")
+            # logging.warning("Total tokens used not found in the API response.")
+            pass
     except Exception as e:
-        logging.error(f"Failed to generate completion. Error: {e}")
+        # logging.error(f"Failed to generate completion. Error: {e}")
         raise SystemExit(f"Failed to generate completion. Error: {e}")
     
     return description
@@ -168,7 +169,7 @@ def run_image_summary():
     content_prompt = st.text_input("Enter the content prompt:", value="Describe the image in Hebrew")
     if uploaded_file is not None:
         if st.button("Process Image"):
-            logging.debug(f"Uploaded file: {uploaded_file.name}")
+            # logging.debug(f"Uploaded file: {uploaded_file.name}")
             frame_path = handle_image_upload(uploaded_file)
 
             image = Image.open(frame_path)

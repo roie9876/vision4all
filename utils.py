@@ -8,13 +8,13 @@ import os
 import logging
 
 # Setup logging configuration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
-    logging.FileHandler("app.log"),
-    logging.StreamHandler()
-])
+# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
+#     logging.FileHandler("app.log"),
+#     logging.StreamHandler()
+# ])
 
 # Test log message to ensure logging is working
-logging.debug("Logging is configured correctly in utils.py")
+# logging.debug("Logging is configured correctly in utils.py")
 
 # Load environment variables
 try:
@@ -67,7 +67,7 @@ def extract_video_segment(video_path, start_time, end_time):
     frame_rate = video.get(cv2.CAP_PROP_FPS)
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    logging.debug(f"Extracting segment: start_time={start_time}, end_time={end_time}, frame_rate={frame_rate}, total_frames={total_frames}")
+    # logging.debug(f"Extracting segment: start_time={start_time}, end_time={end_time}, frame_rate={frame_rate}, total_frames={total_frames}")
 
     # Clamp timestamps
     if start_time < 0:
@@ -76,19 +76,19 @@ def extract_video_segment(video_path, start_time, end_time):
         end_time = 0
     if end_time <= start_time:
         video.release()
-        logging.debug("Invalid segment times, returning None")
+        # logging.debug("Invalid segment times, returning None")
         return None
 
     start_frame = int(start_time * frame_rate)
     end_frame = int(end_time * frame_rate)
     if start_frame >= total_frames:
         video.release()
-        logging.debug("Start frame is beyond total frames, returning None")
+        # logging.debug("Start frame is beyond total frames, returning None")
         return None
     if end_frame > total_frames:
         end_frame = total_frames
 
-    logging.debug(f"Start frame: {start_frame}, End frame: {end_frame}")
+    # logging.debug(f"Start frame: {start_frame}, End frame: {end_frame}")
 
     video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     
@@ -96,7 +96,7 @@ def extract_video_segment(video_path, start_time, end_time):
     for _ in range(start_frame, end_frame):
         success, image = video.read()
         if not success or image is None:
-            logging.debug("Failed to read frame or image is None")
+            # logging.debug("Failed to read frame or image is None")
             break
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
         cv2.imwrite(temp_file.name, image)
@@ -104,7 +104,7 @@ def extract_video_segment(video_path, start_time, end_time):
     video.release()
     
     if not segment_frames:
-        logging.debug("No frames extracted, returning None")
+        # logging.debug("No frames extracted, returning None")
         return None
     
     first_frame = cv2.imread(segment_frames[0])
@@ -119,7 +119,7 @@ def extract_video_segment(video_path, start_time, end_time):
     for frame_path in segment_frames:
         os.remove(frame_path)
     
-    logging.debug(f"Segment created at {segment_path}")
+    # logging.debug(f"Segment created at {segment_path}")
     return segment_path
 
 def summarize_text(text):
@@ -162,7 +162,7 @@ def summarize_descriptions(descriptions):
     return final_summary
 
 def detect_objects_in_image(image, interesting_objects):
-    logging.info("Detecting objects in image")
+    # logging.info("Detecting objects in image")
     # Convert image to bytes and encode to base64
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PNG')
@@ -219,12 +219,12 @@ def detect_objects_in_image(image, interesting_objects):
         response = http.post(ENDPOINT, headers=headers, json=payload)
         response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
     except requests.RequestException as e:
-        logging.error(f"Failed to make the request. Error: {e}")
+        # logging.error(f"Failed to make the request. Error: {e}")
         raise SystemExit(f"Failed to make the request. Error: {e}")
 
     # Extract objects from response
     objects = response.json()['choices'][0]['message']['content']
-    logging.info("Objects detected in image")
+    # logging.info("Objects detected in image")
     return objects.split(", ")
 
 def image_similarity(img1, img2):
@@ -254,8 +254,7 @@ def describe_images_batch(images, content_prompt, batch_size=38):
         
         encoded_images = [image_to_base64(image) for image in resized_images]
         
-        # Log the number of images sent in this request
-        logging.info(f"Sending {len(encoded_images)} images in this request to OpenAI")
+        # logging.info(f"Sending {len(encoded_images)} images in this request to OpenAI")
 
         # Prepare the chat prompt
         chat_prompt = [
@@ -275,8 +274,7 @@ def describe_images_batch(images, content_prompt, batch_size=38):
             }
         ]
         
-        # Log the chat prompt for debugging
-        logging.debug(f"Chat prompt: {chat_prompt}")
+        # logging.debug(f"Chat prompt: {chat_prompt}")
 
         # Generate the completion
         try:
@@ -294,16 +292,16 @@ def describe_images_batch(images, content_prompt, batch_size=38):
             batch_descriptions = [choice.message.content for choice in completion.choices]
             descriptions.extend(batch_descriptions)
             
-            # Log the API response for debugging
-            logging.debug(f"API response: {completion}")
+            # logging.debug(f"API response: {completion}")
     
             # Accumulate total tokens used
             if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_tokens'):
                 total_tokens_used += completion.usage.total_tokens
             else:
-                logging.warning("Total tokens used not found in the API response.")
+                # logging.warning("Total tokens used not found in the API response.")
+                pass
         except Exception as e:
-            logging.error(f"Failed to generate completion. Error: {e}")
+            # logging.error(f"Failed to generate completion. Error: {e}")
             raise SystemExit(f"Failed to generate completion. Error: {e}")
     
     return descriptions, total_tokens_used

@@ -25,14 +25,14 @@ from utils import (
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler()
-    ]
-)
+# logging.basicConfig(
+#     level=logging.DEBUG,
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler("app.log"),
+#         logging.StreamHandler()
+#     ]
+# )
 
 retry_strategy = Retry(
     total=5,
@@ -96,7 +96,7 @@ def describe_image(image, content_prompt):
         }
     ]
 
-    logging.debug(f"Chat prompt: {chat_prompt}")
+    # logging.debug(f"Chat prompt: {chat_prompt}")
 
     try:
         completion = client.chat.completions.create(
@@ -113,12 +113,12 @@ def describe_image(image, content_prompt):
         description = completion.choices[0].message.content
         if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_tokens'):
             total_tokens = completion.usage.total_tokens
-            logging.info(f"Tokens used for this completion: {total_tokens}")
+            # logging.info(f"Tokens used for this completion: {total_tokens}")
         else:
-            logging.warning("Total tokens used not found in the API response.")
+            # logging.warning("Total tokens used not found in the API response.")
             total_tokens = 0
     except Exception as e:
-        logging.error(f"Failed to generate completion. Error: {e}")
+        # logging.error(f"Failed to generate completion. Error: {e}")
         raise SystemExit(f"Failed to generate completion. Error: {e}")
     
     return description, total_tokens
@@ -170,7 +170,7 @@ def analyze_frames(frames):
     return summary, elapsed_time, total_tokens_used
 
 def split_video_into_segments(video_path, segment_length=10):
-    logging.debug("start split the video to segments")
+    # logging.debug("start split the video to segments")
     """
     Splits the video into segments of up to 'segment_length' seconds each,
     saves them in a local 'temp_segments' folder, and returns the segment paths.
@@ -187,8 +187,8 @@ def split_video_into_segments(video_path, segment_length=10):
     frame_counter = 0
     out = None
 
-    logging.debug(f"Splitting video into segments of {segment_length} seconds each.")
-    logging.debug(f"Frames per segment: {frames_per_segment}")
+    # logging.debug(f"Splitting video into segments of {segment_length} seconds each.")
+    # logging.debug(f"Frames per segment: {frames_per_segment}")
 
     while True:
         ret, frame = cap.read()
@@ -203,14 +203,14 @@ def split_video_into_segments(video_path, segment_length=10):
             height, width, _ = frame.shape
             out = cv2.VideoWriter(segment_path, fourcc, fps, (width, height))
             segment_paths.append(segment_path)
-            logging.debug(f"Created segment: {segment_path}")
+            # logging.debug(f"Created segment: {segment_path}")
             segment_index += 1
         out.write(frame)
         frame_counter += 1
     if out:
         out.release()
     cap.release()
-    logging.debug(f"Total segments created: {len(segment_paths)}")
+    # logging.debug(f"Total segments created: {len(segment_paths)}")
     return segment_paths
 
 def process_segment(segment_path, sample_rate):
@@ -260,7 +260,7 @@ def run_video_summary():
 
     if st.button("Process"):
         # Log a message when user clicks 'Process'
-        logging.debug("Video file uploaded and sample rate selected.")
+        # logging.debug("Video file uploaded and sample rate selected.")
 
         # 1. Save the uploaded video to a temporary path
         temp_dir = os.path.join(os.getcwd(), 'temp_video')
@@ -268,11 +268,11 @@ def run_video_summary():
         video_path = os.path.join(temp_dir, uploaded_file.name)
         with open(video_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
-        logging.debug(f"Video saved to {video_path}")
+        # logging.debug(f"Video saved to {video_path}")
 
         # 2. Call `split_video_into_segments` to split the video into 10-second segments
         segment_paths = split_video_into_segments(video_path, segment_length=10)
-        logging.debug(f"Segment paths: {segment_paths}")
+        # logging.debug(f"Segment paths: {segment_paths}")
 
         # 3. Process each segment in parallel
         descriptions = []
@@ -300,7 +300,7 @@ def run_video_summary():
         # 6. Clean up the temporary video file
         if os.path.exists(video_path):
             os.remove(video_path)
-        logging.debug("Video summary process completed.")
+        # logging.debug("Video summary process completed.")
     st.title("Video Summary")
 
     uploaded_file = st.file_uploader("Upload a video file", type=["mp4", "avi", "mov", "mkv"])
@@ -316,7 +316,7 @@ def run_video_summary():
     )
 
     if st.button("Process"):
-        logging.debug("Video file uploaded and sample rate selected.")
+        # logging.debug("Video file uploaded and sample rate selected.")
 
         # Save the uploaded video to a temporary path
         temp_dir = os.path.join(os.getcwd(), 'temp_video')
@@ -324,11 +324,11 @@ def run_video_summary():
         video_path = os.path.join(temp_dir, uploaded_file.name)
         with open(video_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
-        logging.debug(f"Video saved to {video_path}")
+        # logging.debug(f"Video saved to {video_path}")
 
         # Call split_video_into_segments to split the video into 10-second segments
         segment_paths = split_video_into_segments(video_path, segment_length=10)
-        logging.debug(f"Segment paths: {segment_paths}")
+        # logging.debug(f"Segment paths: {segment_paths}")
 
         # Process each segment in parallel
         descriptions = []
@@ -348,7 +348,7 @@ def run_video_summary():
         # Clean up
         if os.path.exists(video_path):
             os.remove(video_path)
-        logging.debug("Video summary process completed.")
+        # logging.debug("Video summary process completed.")
 
 def run_video_summary_split(uploaded_file):
     sample_rate = st.selectbox(
@@ -357,20 +357,20 @@ def run_video_summary_split(uploaded_file):
         format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
         index=1
     )
-    logging.debug(f"Selected sample rate: {sample_rate}")
+    # logging.debug(f"Selected sample rate: {sample_rate}")
 
     if uploaded_file.type.startswith("video"):
         video_path, frames = handle_video_upload(uploaded_file, sample_rate)
-        logging.debug(f"Extracted {len(frames)} frames from the video.")
+        # logging.debug(f"Extracted {len(frames)} frames from the video.")
     else:
         frames = handle_image_upload(uploaded_file)
-        logging.debug(f"Image-based frames: {len(frames)}")
+        # logging.debug(f"Image-based frames: {len(frames)}")
 
     if not frames:
         return "No frames were extracted. Nothing to analyze.", 0, 0
 
     total_frames = len(frames)
-    logging.debug(f"Total frames extracted: {total_frames}")
+    # logging.debug(f"Total frames extracted: {total_frames}")
 
     # Analyze frames
     summary, elapsed_time, total_tokens_used = analyze_frames(frames)

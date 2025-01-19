@@ -4,7 +4,6 @@ import os
 import io
 import base64
 import requests
-import logging
 from PIL import Image
 from openai import AzureOpenAI
 from dotenv import load_dotenv
@@ -22,7 +21,7 @@ client = AzureOpenAI(
 )
 
 # Initialize logging
-logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Setup retry strategy
 retry_strategy = Retry(
@@ -62,10 +61,10 @@ def run_search_object_in_image():
                 st.image(target_image, caption='Target Image', use_container_width=True)
 
                 st.write(f"Processing: {target_image_upload.name}")
-                logging.debug("Calling detect_object_in_image function")
+                # logging.debug("Calling detect_object_in_image function")
                 result_text = detect_object_in_image(ref_image, target_image, object_description)
                 st.markdown(f"<div style='text-align: right;'>{result_text}</div>", unsafe_allow_html=True)
-                logging.debug(f"Result text displayed: {result_text}")
+                # logging.debug(f"Result text displayed: {result_text}")
 
 def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     image.thumbnail(max_size, Image.LANCZOS)
@@ -76,7 +75,7 @@ def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     return Image.open(buffered)
 
 def detect_object_in_image(ref_image, target_image, description):
-    logging.debug("Entered detect_object_in_image function")
+    # logging.debug("Entered detect_object_in_image function")
     
     # Resize and compress images to reduce base64 size
     ref_image = resize_and_compress_image(ref_image)
@@ -147,14 +146,14 @@ def detect_object_in_image(ref_image, target_image, description):
     )
 
     # Log the full response
-    logging.debug(f"Response: {response}")
+    # logging.debug(f"Response: {response}")
 
     # Parse the response
     try:
         result_text = response.choices[0].message.content
-        logging.debug(f"Result text: {result_text}")
+        # logging.debug(f"Result text: {result_text}")
     except Exception as e:
-        logging.error(f"Error parsing response: {e}")
+        # logging.error(f"Error parsing response: {e}")
         result_text = "Error occurred while processing the images."
 
     return result_text

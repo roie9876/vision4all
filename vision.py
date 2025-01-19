@@ -47,14 +47,14 @@ load_dotenv()
 
 # --------------------------------------------------
 # Logging / Retry
-logging.basicConfig(
-    level=logging.DEBUG,  # Capture all logs
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler()
-    ]
-)
+# logging.basicConfig(
+#     level=logging.DEBUG,  # Capture all logs
+#     format='%(asctime)s - %(asctime)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler("app.log"),
+#         logging.StreamHandler()
+#     ]
+# )
 
 retry_strategy = Retry(
     total=5,
@@ -81,7 +81,7 @@ def run_video_summary():
         st.write("No file uploaded.")
         return
 
-    logging.debug(f"Uploaded file: {uploaded_file.name}")
+    # logging.debug(f"Uploaded file: {uploaded_file.name}")
 
     sample_rate = st.selectbox(
         "Select frame extraction rate:",
@@ -89,7 +89,7 @@ def run_video_summary():
         format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
         index=0
     )
-    logging.debug(f"Selected sample rate: {sample_rate}")
+    # logging.debug(f"Selected sample rate: {sample_rate}")
 
     if st.button("Process"):
         # Start timing if needed
@@ -101,14 +101,14 @@ def run_video_summary():
         video_path = os.path.join(temp_dir, uploaded_file.name)
         with open(video_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
-        logging.debug(f"Video saved to {video_path}")
+        # logging.debug(f"Video saved to {video_path}")
 
         # Display the uploaded video
         st.video(video_path)
 
         # 2. Split the video into segments
         segment_paths = split_video_into_segments(video_path, segment_length=10)
-        logging.debug(f"Segment paths: {segment_paths}")
+        # logging.debug(f"Segment paths: {segment_paths}")
 
         # 3. Process each segment in parallel
         descriptions = []
@@ -135,14 +135,14 @@ def run_video_summary():
         # st.write(f"Total frames extracted: {total_frames}")  # Remove this line if frames_processed is not returned
         elapsed_time = time.time() - start_time
         st.write(f"Total time taken to analyze: {elapsed_time:.2f} seconds")  # Display total time taken
-        logging.info(f"Summary generated in {elapsed_time:.2f} seconds")
+        # logging.info(f"Summary generated in {elapsed_time:.2f} seconds")
 
         # 6. Clean up temporary files
         if os.path.exists(video_path):
             os.remove(video_path)
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)  # Use shutil.rmtree to delete the directory and its contents
-        logging.debug("Video summary process completed.")
+        # logging.debug("Video summary process completed.")
 
 # --------------------------------------------------
 # Streamlit UI

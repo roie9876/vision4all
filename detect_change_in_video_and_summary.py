@@ -14,13 +14,13 @@ import yolo_model
 from openai import AzureOpenAI
 
 # Setup logging configuration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
-    logging.FileHandler("app.log"),
-    logging.StreamHandler()
-])
+# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
+#     logging.FileHandler("app.log"),
+#     logging.StreamHandler()
+# ])
 
 # Test log message to ensure logging is working
-logging.debug("Logging is configured correctly in detect_change_in_video_and_summary.py")
+# logging.debug("Logging is configured correctly in detect_change_in_video_and_summary.py")
 
 # Load environment variables
 load_dotenv()
@@ -57,7 +57,7 @@ def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     return Image.open(buffered)
 
 def describe_image(image):
-    logging.info("Describing image")
+    # logging.info("Describing image")
     
     # Resize and compress the image to reduce base64 size
     image = resize_and_compress_image(image)
@@ -116,24 +116,24 @@ def describe_image(image):
             stream=False
         )
         description = completion.choices[0].message.content
-        logging.info("Image description received")
+        # logging.info("Image description received")
     except Exception as e:
-        logging.error(f"Failed to generate completion. Error: {e}")
+        # logging.error(f"Failed to generate completion. Error: {e}")
         raise SystemExit(f"Failed to generate completion. Error: {e}")
     
     return description
 
 def describe_images(images):
-    logging.info("Describing images")
+    # logging.info("Describing images")
     descriptions = []
     for image in images:
         description = describe_image(image)
         descriptions.append(description)
-    logging.info("Image descriptions received")
+    # logging.info("Image descriptions received")
     return descriptions
 
 def summarize_text(text):
-    logging.info("Summarizing text with OpenAI")
+    # logging.info("Summarizing text with OpenAI")
     prompt = (
         "Summarize the following text in Hebrew. focus on pepole description, cars etc:\n" + text
     )
@@ -162,15 +162,15 @@ def summarize_text(text):
         response = http.post(endpoint, headers=headers, json=payload)
         response.raise_for_status()
     except requests.RequestException as e:
-        logging.error(f"Failed to make the request. Error: {e}")
+        # logging.error(f"Failed to make the request. Error: {e}")
         raise SystemExit(f"Failed to make the request. Error: {e}")
 
     summary = response.json()['choices'][0]['message']['content']
-    logging.info("Text summarization received")
+    # logging.info("Text summarization received")
     return summary
 
 def detect_changes_with_openai(frames):
-    logging.info("Detecting changes with OpenAI")
+    # logging.info("Detecting changes with OpenAI")
     descriptions = describe_images(frames)
     
     # Split descriptions into chunks to avoid exceeding token limits
@@ -208,12 +208,12 @@ def detect_changes_with_openai(frames):
             response = http.post(endpoint, headers=headers, json=payload)
             response.raise_for_status()
         except requests.RequestException as e:
-            logging.error(f"Failed to make the request. Error: {e}")
+            # logging.error(f"Failed to make the request. Error: {e}")
             raise SystemExit(f"Failed to make the request. Error: {e}")
 
         result = response.json()['choices'][0]['message']['content']
         summaries.append(result)
-        logging.info("Change detection result received for a chunk")
+        # logging.info("Change detection result received for a chunk")
 
     # Combine all summaries into a final summary
     final_summary = "\n".join(summaries)

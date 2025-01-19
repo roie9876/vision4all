@@ -105,7 +105,7 @@ def run_detect_objects():
                     finished_box.text_area("Finished Videos", "\n".join(finished_videos), height=200, disabled=True)
 
 def summarize_text(text):
-    logging.info("Summarizing text")
+    # logging.info("Summarizing text")
     # Headers and payload for the request
     headers = {
         "Content-Type": "application/json",
@@ -132,16 +132,16 @@ def summarize_text(text):
         response = http.post(os.getenv("AZURE_OPENAI_ENDPOINT"), headers=headers, json=payload)
         response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
     except requests.RequestException as e:
-        logging.error(f"Failed to make the request. Error: {e}")
+        # logging.error(f"Failed to make the request. Error: {e}")
         raise SystemExit(f"Failed to make the request. Error: {e}")
 
     # Extract summary from response
     summary = response.json()['choices'][0]['message']['content']
-    logging.info("Summary generated")
+    # logging.info("Summary generated")
     return summary
 
 def summarize_descriptions(descriptions):
-    logging.info("Summarizing descriptions")
+    # logging.info("Summarizing descriptions")
     combined_text = " ".join(descriptions)
     initial_summary = summarize_text(combined_text)
     final_summary = summarize_text(initial_summary)
