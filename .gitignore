@@ -5,3 +5,5 @@
 /temp_segments*
 /detected objects/*
 app.log
+
+/temp_segments/
