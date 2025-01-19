@@ -1,6 +1,7 @@
 .env
 /tmp/*
 /tmp*
-/temp_segments
+/temp_segments/*
+/temp_segments*
 /detected objects/*
 app.log
