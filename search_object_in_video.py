@@ -33,19 +33,9 @@ http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
 
-def resize_and_compress_image(image, max_size=(800, 800), quality=95):
-    image.thumbnail(max_size, Image.LANCZOS)
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG", quality=quality)
-    return Image.open(buffered)
-
 def detect_object_in_image(ref_image, target_image, description):
     # logging.debug("Entered detect_object_in_image function")
     
-    # Resize and compress images to reduce base64 size
-    ref_image = resize_and_compress_image(ref_image)
-    target_image = resize_and_compress_image(target_image)
-
     # Convert images to base64
     def image_to_base64(img):
         buffered = io.BytesIO()
@@ -62,7 +52,24 @@ def detect_object_in_image(ref_image, target_image, description):
             "content": [
                 {
                     "type": "text",
-                      "text": " אל תענה בכן ולא, עליך לבצע ניתוח מעמיק. ולדרג עד כמה אתה בטוח בתשובה שלך באחוזים"
+                    "text": (
+                        "You are an AI trained to analyze images and compare objects across different images. "
+                        "Your task is to determine whether a specific object, described by the user, is present in the target images with high certainty. "
+                        "The object will be described by its characteristics, which are provided as a parameter called {description} "
+                        "When given the {description} of an object, examine the target images and identify if the object or a similar-looking object appears in them. "
+                        "Consider factors such as image quality, angle, and lighting conditions, and provide an assessment of your confidence in the identification. "
+                        "The user will provide the following information: "
+                        "- {description}: [Detailed characteristics of the object] "
+                        "- Source image characteristics: [Details about the source image] "
+                        "- Target image context: [Context about the target images] "
+                        "Your goal is to confirm with high certainty the presence of the described object in the target images and explain your reasoning. "
+                        "Example input: "
+                        "- Description: Yellow reflective vest with gray stripes "
+                        "- Source image characteristics: Clear image with visible reflective stripes "
+                        "- Target image context: Various angles and lighting conditions "
+                        "Please provide your analysis and confidence level in percentage."
+                        "the answer need to be in Hebrew"
+                    )
                 }
             ]
         },
@@ -91,7 +98,7 @@ def detect_object_in_image(ref_image, target_image, description):
                 },
                 {
                     "type": "text",
-                    "text": f"האם אתה רואה את אותו {description}  בתמונת המקור והיעד"
+                    "text": f"האם אתה רואה את אותו {description} בתמונת המקור והיעד"
                 }
             ]
         }
@@ -130,9 +137,6 @@ def detect_object_in_image(ref_image, target_image, description):
 def detect_objects_in_images(ref_image, target_images, description):
     # logging.debug("Entered detect_objects_in_images function")
     
-    # Resize and compress reference image to reduce base64 size
-    ref_image = resize_and_compress_image(ref_image)
-
     # Convert reference image to base64
     def image_to_base64(img):
         buffered = io.BytesIO()
@@ -175,7 +179,6 @@ def detect_objects_in_images(ref_image, target_images, description):
 
     # Add target images to the chat prompt
     for target_image in target_images:
-        target_image = resize_and_compress_image(target_image)
         target_image_base64 = image_to_base64(target_image)
         chat_prompt[1]["content"].append({
             "type": "image_url",
@@ -216,22 +219,44 @@ def detect_objects_in_images(ref_image, target_images, description):
         # logging.error(f"Error parsing response: {e}")
         result_text = "Error occurred while processing the images."
 
+    #st.write(result_text)
     return result_text
 
-def summarize_results(results):
+def summarize_results(results, description):
     # logging.debug("Entered summarize_results function")
 
     # Prepare the chat prompt for summarization
     chat_prompt = [
         {
             "role": "system",
-            "content": "You are an AI assistant that helps people summarize information."
+            "content": (
+                "You are an AI assistant that specializes in summarizing image analysis results in hebrew. "
+                "Your goal is to provide concise and accurate summaries of multiple analyses, focusing on key findings, "
+                "confidence levels, and any notable patterns or exceptions. Ensure that important high-confidence identifications "
+                "are highlighted and clearly communicated."
+            )
         },
         {
             "role": "user",
-            "content": "Summarize the following results in Hebrew:\n" + "\n".join(results)
+            "content": (
+                f"You are an AI assistant tasked with summarizing the results of image analyses in hebrew. Each analysis determines the presence "
+                f"of a specific {description}, described by the user, in target images. Your summary should focus on key findings and "
+                "ensure no important information is missed. The input will include multiple analysis results, each containing: "
+                f"- Object description: {description} "
+                #  "- Presence confirmation (Yes/No) "
+                "Your summary should include: "
+                f"1. requested to find {description} in the video"
+                # "1. Number and percentage of images where the {description} was confirmed present. "
+                "2. The highest confidence level achieved across all analyses. "
+                "3. Summary of key observations or patterns, especially those with high confidence levels. "
+                "4. Any exceptions or uncertainties that should be noted, with an emphasis on the reasons for lower confidence levels. "
+                "Please provide a summary in Hebrew, encapsulating the key findings and confidence levels, ensuring that important "
+                "high-confidence identifications are highlighted. Example input: "
+                ""
+            )
         }
     ]
+    
 
     # Generate the completion
     response = client.chat.completions.create(
@@ -261,6 +286,8 @@ def summarize_results(results):
         # logging.error(f"Error parsing response: {e}")
         summary_text = "Error occurred while summarizing the results."
 
+    #st.write("סיכום ביניים:")
+    #st.write(summary_text)
     return summary_text
 
 def run_search_object_in_video():
@@ -296,19 +323,31 @@ def run_search_object_in_video():
                 frames = extract_frames(video_path, sample_rate=sample_rate)
                 st.write(f"Extracted {len(frames)} frames from the video.")
                 
+                # Display all extracted frames
+                #st.write("Extracted Frames:")
+                # for frame_path in frames:
+                #     frame_image = Image.open(frame_path)
+                #     st.image(frame_image, use_column_width=True)
+
                 # Batch frames for fewer OpenAI calls
                 batch_size = 5
                 results = []
                 for i in range(0, len(frames), batch_size):
                     batch_frames = [Image.open(frame_path) for frame_path in frames[i:i+batch_size]]
                     result_text = detect_objects_in_images(ref_image, batch_frames, object_description)
-                    if "yes" in result_text.lower() or "כן" in result_text.lower():
-                        results.append(result_text)
+                    #if "yes" in result_text.lower() or "כן" in result_text.lower():
+                    
+                    #st.write("סיכום ביניים")
+                    #st.write(result_text)
+                    results.append(result_text)
 
                 if results:
-                    summary = summarize_results(results)
-                    st.write("Summary:")
-                    st.write(summary)
+                    summary = summarize_results(results,object_description)
+                    #st.write("האוביקט שחיפשנו הוא")
+                    #st.write(object_description)
+                    st.write("סיכום:")
+                    st.markdown(f'<div dir="rtl">{summary}</div>', unsafe_allow_html=True)
+                    #st.write(summary)
 
                 # End timer and calculate duration
                 end_time = time.time()

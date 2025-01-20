@@ -4,6 +4,7 @@ import os
 import io
 import base64
 import requests
+import time
 from PIL import Image
 from openai import AzureOpenAI
 from dotenv import load_dotenv
@@ -35,6 +36,9 @@ http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
 
+# Initialize token usage counter
+total_tokens_used = 0
+
 def count_tokens(text):
     # For base64 strings, count the length directly
     return len(text)
@@ -62,8 +66,11 @@ def run_search_object_in_image():
 
                 st.write(f"Processing: {target_image_upload.name}")
                 # logging.debug("Calling detect_object_in_image function")
-                result_text = detect_object_in_image(ref_image, target_image, object_description)
+                result_text, elapsed_str, total_tokens_used, total_price = detect_object_in_image(ref_image, target_image, object_description)
                 st.markdown(f"<div style='text-align: right;'>{result_text}</div>", unsafe_allow_html=True)
+                st.write(f"Total analysis time: {elapsed_str}")
+                st.write(f"Total tokens used: {total_tokens_used}")
+                st.write(f"Approximate cost: ${total_price:.4f}")
                 # logging.debug(f"Result text displayed: {result_text}")
 
 def resize_and_compress_image(image, max_size=(800, 800), quality=95):
@@ -75,6 +82,11 @@ def resize_and_compress_image(image, max_size=(800, 800), quality=95):
     return Image.open(buffered)
 
 def detect_object_in_image(ref_image, target_image, description):
+    global total_tokens_used  # Access the global token counter
+
+    # Start timer
+    start_time = time.time()
+
     # logging.debug("Entered detect_object_in_image function")
     
     # Resize and compress images to reduce base64 size
@@ -148,6 +160,10 @@ def detect_object_in_image(ref_image, target_image, description):
     # Log the full response
     # logging.debug(f"Response: {response}")
 
+    # Try extracting usage if available
+    if hasattr(response, "usage") and response.usage:
+        total_tokens_used += response.usage.total_tokens
+
     # Parse the response
     try:
         result_text = response.choices[0].message.content
@@ -156,4 +172,16 @@ def detect_object_in_image(ref_image, target_image, description):
         # logging.error(f"Error parsing response: {e}")
         result_text = "Error occurred while processing the images."
 
-    return result_text
+    # End timer and calculate duration
+    end_time = time.time()
+    elapsed = end_time - start_time
+    hours = int(elapsed // 3600)
+    minutes = int((elapsed % 3600) // 60)
+    seconds = int(elapsed % 60)
+    elapsed_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    # Approximate cost calculation (example rate):
+    cost_per_1k_tokens = 0.0015
+    total_price = (total_tokens_used / 1000) * cost_per_1k_tokens
+
+    return result_text, elapsed_str, total_tokens_used, total_price
