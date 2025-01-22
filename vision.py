@@ -41,7 +41,8 @@ from video_summary_video import (
     analyze_frames,
     split_video_into_segments,
     process_segment,
-    calculate_price  # Add this import
+    calculate_price,
+    run_video_summary  # <-- Import run_video_summary from video_summary_video
 )
 # Load environment variables
 load_dotenv()
@@ -69,91 +70,7 @@ http.mount("https://", adapter)
 http.mount("http://", adapter)
 
 # --------------------------------------------------
-def run_video_summary():
-    st.title("Video/Image Summary")
-
-    # Delete 'temp_segments' folder at start
-    temp_segments_dir = os.path.join(os.getcwd(), 'temp_segments')
-    if os.path.exists(temp_segments_dir):
-        shutil.rmtree(temp_segments_dir)
-
-    uploaded_file = st.file_uploader(
-        "Choose a video or image...",
-        type=["mp4", "avi", "mov", "mkv", "jpg", "jpeg", "png"],
-        key="uploader1"   # <-- Add unique key
-    )
-
-    if uploaded_file is None:
-        st.write("No file uploaded.")
-        return
-
-    # logging.debug(f"Uploaded file: {uploaded_file.name}")
-
-    sample_rate = st.selectbox(
-        "Select frame extraction rate:",
-        options=[1, 2, 0.5, 4],
-        format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
-        index=0
-    )
-    # logging.debug(f"Selected sample rate: {sample_rate}")
-
-    if st.button("Process"):
-        # Start timing if needed
-        start_time = time.time()
-
-        # 1. Save video to temporary location
-        temp_dir = os.path.join(os.getcwd(), 'temp_video')
-        os.makedirs(temp_dir, exist_ok=True)
-        video_path = os.path.join(temp_dir, uploaded_file.name)
-        with open(video_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        # logging.debug(f"Video saved to {video_path}")
-
-        # Display the uploaded video
-        st.video(video_path)
-
-        # 2. Split the video into segments
-        segment_paths = split_video_into_segments(video_path, segment_length=10)
-        # logging.debug(f"Segment paths: {segment_paths}")
-
-        # 3. Process each segment in parallel
-        descriptions = []
-        total_tokens_sum = 0
-        total_frames = 0  # Initialize total frames counter
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(process_segment, seg_path, sample_rate)
-                for seg_path in segment_paths
-            ]
-            for future in concurrent.futures.as_completed(futures):
-                desc, tokens_used, frames_processed = future.result()  # Adjust to handle three returned values
-                descriptions.append(desc)
-                total_tokens_sum += tokens_used
-                total_frames += frames_processed  # Update total frames
-
-        # 4. Summarize the segment descriptions
-        summary_text = summarize_descriptions(descriptions)
-
-        # 5. Display results
-        st.write("### Summary:")
-        st.write(summary_text)
-        st.write(f"Total tokens used: {total_tokens_sum}")
-        st.write(f"Total frames extracted: {total_frames}")  # Display total frames
-
-        # Calculate and display the price
-        price = calculate_price(total_tokens_sum)
-        st.write(f"Price: ${price:.4f}")
-
-        elapsed_time = time.time() - start_time
-        st.write(f"Total time taken to analyze: {elapsed_time:.2f} seconds")  # Display total time taken
-        # logging.info(f"Summary generated in {elapsed_time:.2f} seconds")
-
-        # 6. Clean up temporary files
-        if os.path.exists(video_path):
-            os.remove(video_path)
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)  # Use shutil.rmtree to delete the directory and its contents
-        # logging.debug("Video summary process completed.")
+# Remove the entire run_video_summary() function definition
 
 # --------------------------------------------------
 # Streamlit UI
