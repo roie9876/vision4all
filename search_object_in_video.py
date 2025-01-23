@@ -225,6 +225,8 @@ def detect_objects_in_images(ref_image, target_images, description):
 def summarize_results(results, description):
     # logging.debug("Entered summarize_results function")
 
+    results_str = "\n".join(results)
+
     # Prepare the chat prompt for summarization
     chat_prompt = [
         {
@@ -239,6 +241,8 @@ def summarize_results(results, description):
         {
             "role": "user",
             "content": (
+                f"פלט ניתוח התמונות:\n{results_str}\n\n"
+                f"אנא ספק סיכום סופי בעברית על סמך התוצאות הללו. "
                 f"You are an AI assistant tasked with summarizing the results of image analyses in hebrew. Each analysis determines the presence "
                 f"of a specific {description}, described by the user, in target images. Your summary should focus on key findings and "
                 "ensure no important information is missed. The input will include multiple analysis results, each containing: "
@@ -345,7 +349,8 @@ def run_search_object_in_video():
                     summary = summarize_results(results,object_description)
                     #st.write("האוביקט שחיפשנו הוא")
                     #st.write(object_description)
-                    st.write("סיכום:")
+                    st.subheader("סיכום")
+                    #st.write("סיכום:")
                     st.markdown(f'<div dir="rtl">{summary}</div>', unsafe_allow_html=True)
                     #st.write(summary)
 

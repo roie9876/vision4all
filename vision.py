@@ -28,36 +28,13 @@ from search_object_in_image import run_search_object_in_image
 from search_object_in_video import run_search_object_in_video
 from detect_change_in_video_and_summary import run_detect_change_in_video_and_summary
 from video_summary_image import run_image_summary, handle_image_upload
+from video_summary_video import run_video_summary  # Add this import
 
-
-from utils import (
-    extract_frames,
-    summarize_descriptions,
-    detect_objects_in_image
-    # We'll define describe_images_batch in this file now
-)
-from video_summary_video import (
-    handle_video_upload,
-    analyze_frames,
-    split_video_into_segments,
-    process_segment,
-    calculate_price,
-    run_video_summary  # <-- Import run_video_summary from video_summary_video
-)
 # Load environment variables
 load_dotenv()
 
 # --------------------------------------------------
 # Logging / Retry
-# logging.basicConfig(
-#     level=logging.DEBUG,  # Capture all logs
-#     format='%(asctime)s - %(asctime)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler("app.log"),
-#         logging.StreamHandler()
-#     ]
-# )
-
 retry_strategy = Retry(
     total=5,
     backoff_factor=2,
@@ -69,11 +46,6 @@ http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
 
-# --------------------------------------------------
-# Remove the entire run_video_summary() function definition
-
-# --------------------------------------------------
-# Streamlit UI
 st.sidebar.title("Select an Application")
 app_selection = st.sidebar.radio(
     "Go to",

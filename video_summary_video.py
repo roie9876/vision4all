@@ -325,63 +325,65 @@ def run_video_summary_split(uploaded_file):
 
     return summary, elapsed_time, total_tokens_used
 
-def batch_describe_images(images, content_prompt, batch_size=5):
+def batch_describe_images(images, content_prompt, batch_size=20):
     results = []
-    for i in range(0, len(images), batch_size):
-        batch = images[i:i+batch_size]
-        # Build a single prompt with multiple images.
-        chat_prompt = [
-            {
-                "role": "system",
-                "content": [{
-                    "type": "text",
-                    "text": "You are an AI assistant that helps people find information."
-                }]
-            },
-            {
-                "role": "user",
-                "content": []
-            }
-        ]
-        # Add prompt text for each image in the batch
-        for idx, img in enumerate(batch):
-            # Resize and convert image to base64
-            buffered = io.BytesIO()
-            img.save(buffered, format="JPEG")
-            encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    # Concurrency for each batch
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_batch = {}
+        for i in range(0, len(images), batch_size):
+            # Build a single prompt with multiple images.
+            chat_prompt = [
+                {
+                    "role": "system",
+                    "content": [{
+                        "type": "text",
+                        "text": "You are an AI assistant that helps people find information."
+                    }]
+                },
+                {
+                    "role": "user",
+                    "content": []
+                }
+            ]
+            # Add prompt text for each image in the batch
+            for idx, img in enumerate(images[i:i+batch_size]):
+                # Resize and convert image to base64
+                buffered = io.BytesIO()
+                img.save(buffered, format="JPEG")
+                encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-            chat_prompt[1]["content"].append({
-                "type": "text",
-                "text": f"{content_prompt} (Image {i+idx+1})"
-            })
-            chat_prompt[1]["content"].append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
-            })
-        # Perform one OpenAI call for the entire batch
-        completion = client.chat.completions.create(
-            model=DEPLOYMENT,
-            messages=chat_prompt,
-            max_tokens=4096,
-            temperature=0,
-            top_p=0.95,
-            frequency_penalty=0,
-            presence_penalty=0,
-            stop=None,
-            stream=False
-        )
-        description = completion.choices[0].message.content
-        tokens_used = getattr(completion.usage, 'total_tokens', 0)
-        # In this example, we store the entire batch description as one result
-        results.append((description, tokens_used))
+                chat_prompt[1]["content"].append({
+                    "type": "text",
+                    "text": f"{content_prompt} (Image {i+idx+1})"
+                })
+                chat_prompt[1]["content"].append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
+                })
+            future = executor.submit(client.chat.completions.create,
+                                     model=DEPLOYMENT,
+                                     messages=chat_prompt,
+                                     max_tokens=4096,
+                                     temperature=0,
+                                     top_p=0.95,
+                                     frequency_penalty=0,
+                                     presence_penalty=0,
+                                     stop=None,
+                                     stream=False)
+            future_to_batch[future] = i
+        for future in concurrent.futures.as_completed(future_to_batch):
+            completion = future.result()
+            description = completion.choices[0].message.content
+            tokens_used = getattr(completion.usage, 'total_tokens', 0)
+            results.append((description, tokens_used))
     return results
 
 def analyze_frames(frames):
     start_time = time.time()
     descriptions = []
     total_tokens_used = 0
-    # Batch process frames
-    batched_results = batch_describe_images(frames, "Describe in Hebrew:", batch_size=5)
+    # Use the updated batch_describe_images with concurrency
+    batched_results = batch_describe_images(frames, "Describe in Hebrew:", batch_size=20)
     for desc_batch, tokens_used in batched_results:
         descriptions.extend(desc_batch)
         total_tokens_used += tokens_used
