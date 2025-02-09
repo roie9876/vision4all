@@ -20,7 +20,8 @@ from azure_openai_client import client, DEPLOYMENT
 # Local imports
 from utils import (
     summarize_descriptions,
-    extract_frames  # we still use for sub-video frames
+    extract_frames,  # we still use for sub-video frames
+    call_azure_openai_with_retry  # <- import our new helper
 )
 
 load_dotenv()
@@ -88,17 +89,17 @@ def describe_image(image, content_prompt):
     ]
 
     try:
-        completion = client.chat.completions.create(
-            model=DEPLOYMENT,
-            messages=chat_prompt,
-            max_tokens=4096,
-            temperature=0,
-            top_p=0.95,
-            frequency_penalty=0,
-            presence_penalty=0,
-            stop=None,
-            stream=False
-        )
+        completion = call_azure_openai_with_retry({
+            "model": DEPLOYMENT,
+            "messages": chat_prompt,
+            "max_tokens": 4096,
+            "temperature": 0,
+            "top_p": 0.95,
+            "frequency_penalty": 0,
+            "presence_penalty": 0,
+            "stop": None,
+            "stream": False
+        })
         description = completion.choices[0].message.content
         if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_tokens'):
             total_tokens = completion.usage.total_tokens
@@ -189,17 +190,17 @@ def summarize_image_analysis(image, description):
     ]
 
     # Generate the completion
-    response = client.chat.completions.create(
-        model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
-        messages=chat_prompt,
-        max_tokens=800,
-        temperature=0.7,
-        top_p=0.95,
-        frequency_penalty=0,
-        presence_penalty=0,
-        stop=None,
-        stream=False
-    )
+    response = call_azure_openai_with_retry({
+        "model": os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+        "messages": chat_prompt,
+        "max_tokens": 800,
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "frequency_penalty": 0,
+        "presence_penalty": 0,
+        "stop": None,
+        "stream": False
+    })
 
     # Try extracting usage if available
     if hasattr(response, "usage") and response.usage:
@@ -248,7 +249,7 @@ def run_video_summary():
         index=1
     )
 
-    content_prompt = st.text_input("Enter the content prompt:", value="Describe what you see in Hebrew")
+    content_prompt = st.text_input("Enter the content prompt:", value="Analyze the image and describe it in Hebrew. Focus on identifying and detailing cars, animals, and humans. If there are moving objects, try to determine if they are human or animal. For each detected object, provide as many details as possible: Cars: Describe the color, type, and model. Animals: Identify the type of animal. Humans: Describe what they are doing, what they are wearing, and if they have any weapons. If the model is unsure whether an object is a car, human, or animal, make the best guess and provide an explanation")
 
     if st.button("Process"):
         start_time = time.time()
@@ -279,7 +280,7 @@ def run_video_summary():
                 total_frames += frames_processed
 
         # 4. Summarize
-        summary_text = summarize_descriptions(descriptions)
+        summary_text = summarize_descriptions(descriptions, content_prompt=content_prompt)
 
         # 5. Display results
         st.write("### Summary:")
@@ -360,16 +361,17 @@ def batch_describe_images(images, content_prompt, batch_size=20):
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
                 })
-            future = executor.submit(client.chat.completions.create,
-                                     model=DEPLOYMENT,
-                                     messages=chat_prompt,
-                                     max_tokens=4096,
-                                     temperature=0,
-                                     top_p=0.95,
-                                     frequency_penalty=0,
-                                     presence_penalty=0,
-                                     stop=None,
-                                     stream=False)
+            future = executor.submit(call_azure_openai_with_retry, {
+                "model": DEPLOYMENT,
+                "messages": chat_prompt,
+                "max_tokens": 4096,
+                "temperature": 0,
+                "top_p": 0.95,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "stop": None,
+                "stream": False
+            })
             future_to_batch[future] = i
         for future in concurrent.futures.as_completed(future_to_batch):
             completion = future.result()

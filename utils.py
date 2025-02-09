@@ -6,6 +6,8 @@ import cv2
 from PIL import Image
 import os
 import logging
+import openai
+import time
 
 # Setup logging configuration
 # logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
@@ -41,6 +43,26 @@ adapter = HTTPAdapter(max_retries=retry_strategy)
 http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
+
+from azure_openai_client import client, DEPLOYMENT  # Fix the NameError by importing client
+
+def call_azure_openai_with_retry(create_kwargs, max_retries=5):
+    """
+    Calls Azure OpenAI with retries against rate limits.
+    """
+    attempt = 0
+    while attempt < max_retries:
+        try:
+            return client.chat.completions.create(**create_kwargs)
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str:
+                wait_time = 2 ** attempt
+                time.sleep(wait_time)
+                attempt += 1
+            else:
+                raise
+    raise SystemExit("Rate limit exceeded after multiple retries.")
 
 def extract_frames(video_path, sample_rate=1.0):
     """
@@ -136,7 +158,7 @@ def summarize_text(text):
             },
             {
                 "role": "user",
-                "content": f"Summarize the following text in Hebrew: {text}"
+                "content": f"Summarize the following text in Hebrew. Ensure that any information related to vehicles, humans, or animals is included in the summar: {text}"
             }
         ],
         "temperature": 0.2,
@@ -155,7 +177,9 @@ def summarize_text(text):
     summary = response.json()['choices'][0]['message']['content']
     return summary
 
-def summarize_descriptions(descriptions):
+def summarize_descriptions(descriptions, content_prompt=None):
+    if not content_prompt:
+        content_prompt = "Default fallback prompt."
     combined_text = " ".join(descriptions)
     initial_summary = summarize_text(combined_text)
     final_summary = summarize_text(initial_summary)
@@ -278,17 +302,17 @@ def describe_images_batch(images, content_prompt, batch_size=38):
 
         # Generate the completion
         try:
-            completion = client.completions.create(
-                model=deployment,
-                messages=chat_prompt,
-                max_tokens=4096,
-                temperature=0,
-                top_p=0.95,
-                frequency_penalty=0,
-                presence_penalty=0,
-                stop=None,
-                stream=False
-            )
+            completion = call_azure_openai_with_retry({
+                "model": deployment,
+                "messages": chat_prompt,
+                "max_tokens": 4096,
+                "temperature": 0,
+                "top_p": 0.95,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "stop": None,
+                "stream": False
+            })
             batch_descriptions = [choice.message.content for choice in completion.choices]
             descriptions.extend(batch_descriptions)
             
