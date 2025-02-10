@@ -1,5 +1,6 @@
 # Ignore the virtual environment directory
 venv/
+results/
 .env
 /tmp/*
 /tmp*

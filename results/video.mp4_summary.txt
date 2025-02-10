@@ -1,5 +1,0 @@
-Video Description Summary:
-האדם בתמונה לובש חולצה שחורה עם צווארון וכפתורים, וידיו משולבות בחזית גופו. הרקע לבן ואחיד.
-
-Object Counts (YOLO):
-{'human': 1, 'car': 0, 'animal': 0}

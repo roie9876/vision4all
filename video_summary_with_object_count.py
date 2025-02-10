@@ -15,6 +15,9 @@ import cv2
 import shutil
 from ultralytics import YOLO
 import numpy as np
+import json
+import random
+from datetime import datetime
 
 # Import your shared Azure OpenAI client
 from azure_openai_client import client, DEPLOYMENT
@@ -304,6 +307,13 @@ def batch_describe_images(images, content_prompt, batch_size=20):
             results.append((description, tokens_used))
     return results
 
+def random_start_time():
+    day = random.randint(1, 6)
+    hour = random.randint(0, 23)
+    minute = random.randint(0, 59)
+    second = random.randint(0, 59)
+    return datetime(2024, 10, day, hour, minute, second).isoformat()
+
 def run_video_summary_with_object_count():
     st.title("Video Summary with Object Count")
     
@@ -333,6 +343,9 @@ def run_video_summary_with_object_count():
     
     processing_videos = []
     finished_videos = []
+    
+    # List to collect video info for JSON output
+    json_results = []
     
     if st.button("Process Videos"):
         results_dir = os.path.join(os.getcwd(), 'results')
@@ -364,7 +377,6 @@ def run_video_summary_with_object_count():
             st.video(video_path)
             
             # Process video with YOLO to obtain object counts.
-            # (The processed video is saved only temporarily.)
             output_video_path = os.path.join(temp_dir, f"{video_name}_processed.webm")
             final_output_path, object_counts = yolo_model.process_video_with_counts(video_path, output_video_path)
             st.video(final_output_path)
@@ -390,13 +402,22 @@ def run_video_summary_with_object_count():
             summary_text = summarize_descriptions(descriptions)
             st.write("Video Description Summary:", summary_text)
             
-            # Write summary and object counts to a text file in the results folder.
-            result_file = os.path.join(results_dir, f"{video_name}_summary.txt")
-            with open(result_file, "w", encoding="utf-8") as rf:
-                rf.write("Video Description Summary:\n")
-                rf.write(summary_text + "\n\n")
-                rf.write("Object Counts (YOLO):\n")
-                rf.write(str(object_counts) + "\n")
+            # Build JSON object for this video
+            video_info = {
+                "video_descriptions": summary_text,
+                "video_url": "",
+                "start_time": random_start_time(),
+                "point_latitude": 33.12045961,
+                "point_longitude": 35.18533746,
+                "CameraID": f"id_{random.randint(1, 20)}",
+                "video_name": video_name,
+                "object_counts": object_counts
+            }
+            # Write JSON file with the same name as the video (e.g., 1.mp4 -> 1.json)
+            base_name, _ = os.path.splitext(video_name)
+            json_file_path = os.path.join(results_dir, f"{base_name}.json")
+            with open(json_file_path, "w", encoding="utf-8") as jf:
+                json.dump([video_info], jf, ensure_ascii=False, indent=2)
             
             processing_videos.remove(video_name)
             finished_videos.append(video_name)
