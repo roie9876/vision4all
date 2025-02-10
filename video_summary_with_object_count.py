@@ -63,29 +63,15 @@ def describe_image(image, content_prompt):
         {
             "role": "system",
             "content": [
-                {
-                    "type": "text",
-                    "text": "You are an AI assistant that helps people find information."
-                }
+                {"type": "text", "text": "You are an AI assistant that helps people find information."}
             ]
         },
         {
             "role": "user",
             "content": [
-                {
-                    "type": "text",
-                    "text": content_prompt
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{encoded_image}"
-                    }
-                },
-                {
-                    "type": "text",
-                    "text": "\n"
-                }
+                {"type": "text", "text": content_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}},
+                {"type": "text", "text": "\n"}
             ]
         }
     ]
@@ -114,8 +100,8 @@ def describe_image(image, content_prompt):
     return description, total_tokens
 
 def handle_image_upload(uploaded_file):
-    img = Image.open(uploaded_file)  # Load the image here
-    if img.mode == 'CMYK' or img.mode == 'RGBA':
+    img = Image.open(uploaded_file)
+    if img.mode in ('CMYK', 'RGBA'):
         img = img.convert('RGB')
     st.image(img, caption='Uploaded Image', use_container_width=True)
     
@@ -137,21 +123,17 @@ def handle_video_upload(uploaded_file, frames_per_second):
     frame_interval = int(round(original_fps / frames_per_second)) if frames_per_second != 0 else 1
     frames_list = []
     frame_count = 0
-    # ...existing code...
+    # (Your code for frame extraction can go here if needed)
+    return video_path, frames_list
 
 def summarize_image_analysis(image, description):
-    global total_tokens_used  # Access the global token counter
-
-    # Start timer
+    global total_tokens_used  
     if "total_tokens_used" not in st.session_state:
         st.session_state.total_tokens_used = 0
 
     start_time = time.time()
-
-    # Resize and compress the image to reduce base64 size
     image = resize_and_compress_image(image)
 
-    # Convert image to base64
     def image_to_base64(img):
         buffered = io.BytesIO()
         img.save(buffered, format="JPEG")
@@ -159,39 +141,21 @@ def summarize_image_analysis(image, description):
 
     encoded_image = image_to_base64(image)
 
-    # Prepare the chat prompt
     chat_prompt = [
         {
             "role": "system",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "You are an AI assistant that helps people find information."
-                }
-            ]
+            "content": [{"type": "text", "text": "You are an AI assistant that helps people find information."}]
         },
         {
             "role": "user",
             "content": [
-                {
-                    "type": "text",
-                    "text": description
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{encoded_image}"
-                    }
-                },
-                {
-                    "type": "text",
-                    "text": "\n"
-                }
+                {"type": "text", "text": description},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}},
+                {"type": "text", "text": "\n"}
             ]
         }
     ]
 
-    # Generate the completion
     response = client.chat.completions.create(
         model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
         messages=chat_prompt,
@@ -204,17 +168,14 @@ def summarize_image_analysis(image, description):
         stream=False
     )
 
-    # Try extracting usage if available
     if hasattr(response, "usage") and response.usage:
         st.session_state.total_tokens_used += response.usage.total_tokens
 
-    # Parse the response
     try:
         summary_text = response.choices[0].message.content
     except Exception as e:
         summary_text = "Error occurred while summarizing the results."
 
-    # End timer and calculate duration
     end_time = time.time()
     elapsed = end_time - start_time
     hours = int(elapsed // 3600)
@@ -222,195 +183,12 @@ def summarize_image_analysis(image, description):
     seconds = int(elapsed % 60)
     elapsed_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-    # Approximate cost calculation (example rate):
     cost_per_1k_tokens = 0.0015
     total_price = (st.session_state.total_tokens_used / 1000) * cost_per_1k_tokens
 
     return summary_text, elapsed_str, st.session_state.total_tokens_used, total_price
 
-def run_video_summary():
-    st.title("Video/Image Summary with Object Count")
-    # Delete 'temp_segments' folder at start
-    temp_segments_dir = os.path.join(os.getcwd(), 'temp_segments')
-    if os.path.exists(temp_segments_dir):
-        shutil.rmtree(temp_segments_dir)
-
-    uploaded_file = st.file_uploader(
-        "Choose a video or image...",
-        type=["mp4", "avi", "mov", "mkv", "jpg", "jpeg", "png"],
-        key="uploader1"
-    )
-    if uploaded_file is None:
-        st.write("No file uploaded.")
-        return
-
-    sample_rate = st.selectbox(
-        "Select frame extraction rate:",
-        options=[1, 2, 0.5, 4],
-        format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
-        index=1
-    )
-
-    content_prompt = st.text_input("Enter the content prompt:", value="Describe what you see in Hebrew")
-
-    if st.button("Process"):
-        start_time = time.time()
-        # 1. Save video
-        temp_dir = os.path.join(os.getcwd(), 'temp_video')
-        os.makedirs(temp_dir, exist_ok=True)
-        video_path = os.path.join(temp_dir, uploaded_file.name)
-        with open(video_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        st.video(video_path)
-
-        # 2. Split video into segments
-        segment_paths = split_video_into_segments(video_path, segment_length=10)
-        descriptions = []
-        total_tokens_sum = 0
-        total_frames = 0
-        object_counts = {"human": 0, "car": 0, "animal": 0}
-
-        # 3. Process each segment in parallel
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(process_segment, seg_path, sample_rate)
-                for seg_path in segment_paths
-            ]
-            for future in concurrent.futures.as_completed(futures):
-                desc, tokens_used, frames_processed, counts = future.result()
-                descriptions.append(desc)
-                total_tokens_sum += tokens_used
-                total_frames += frames_processed
-                for key in object_counts:
-                    object_counts[key] += counts.get(key, 0)
-
-        # 4. Summarize
-        summary_text = summarize_descriptions(descriptions)
-
-        # 5. Display results
-        st.write("### Summary:")
-        st.write(summary_text)
-        st.write(f"Total tokens used: {total_tokens_sum}")
-        st.write(f"Total frames extracted: {total_frames}")
-        st.write(f"Object counts: {object_counts}")
-        price = calculate_price(total_tokens_sum)
-        st.write(f"Price: ${price:.4f}")
-        elapsed_time = time.time() - start_time
-        st.write(f"Total time taken: {elapsed_time:.2f} seconds")
-
-        # 6. Cleanup
-        if os.path.exists(video_path):
-            os.remove(video_path)
-        if os.path.exists(temp_segments_dir):
-            shutil.rmtree(temp_segments_dir)
-
-def run_video_summary_split(uploaded_file):
-    sample_rate = st.selectbox(
-        "Select frame extraction rate:",
-        options=[0.5, 1, 2, 4],
-        format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
-        index=1
-    )
-
-    if uploaded_file.type.startswith("video"):
-        video_path, frames = handle_video_upload(uploaded_file, sample_rate)
-    else:
-        frames = handle_image_upload(uploaded_file)
-
-    if not frames:
-        return "No frames were extracted. Nothing to analyze.", 0, 0
-
-    total_frames = len(frames)
-
-    # Analyze frames
-    summary, elapsed_time, total_tokens_used = analyze_frames(frames)
-
-    # Clean up
-    if uploaded_file.type.startswith("video"):
-        if os.path.exists(video_path):
-            os.remove(video_path)
-
-    return summary, elapsed_time, total_tokens_used
-
-def batch_describe_images(images, content_prompt, batch_size=20):
-    results = []
-    # Concurrency for each batch
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_batch = {}
-        for i in range(0, len(images), batch_size):
-            # Build a single prompt with multiple images.
-            chat_prompt = [
-                {
-                    "role": "system",
-                    "content": [{
-                        "type": "text",
-                        "text": "You are an AI assistant that helps people find information."
-                    }]
-                },
-                {
-                    "role": "user",
-                    "content": []
-                }
-            ]
-            # Add prompt text for each image in the batch
-            for idx, img in enumerate(images[i:i+batch_size]):
-                # Resize and convert image to base64
-                buffered = io.BytesIO()
-                img.save(buffered, format="JPEG")
-                encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-                chat_prompt[1]["content"].append({
-                    "type": "text",
-                    "text": f"{content_prompt} (Image {i+idx+1})"
-                })
-                chat_prompt[1]["content"].append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
-                })
-            future = executor.submit(client.chat.completions.create,
-                                     model=DEPLOYMENT,
-                                     messages=chat_prompt,
-                                     max_tokens=4096,
-                                     temperature=0,
-                                     top_p=0.95,
-                                     frequency_penalty=0,
-                                     presence_penalty=0,
-                                     stop=None,
-                                     stream=False)
-            future_to_batch[future] = i
-        for future in concurrent.futures.as_completed(future_to_batch):
-            completion = future.result()
-            description = completion.choices[0].message.content
-            tokens_used = getattr(completion.usage, 'total_tokens', 0)
-            results.append((description, tokens_used))
-    return results
-
-def analyze_frames(frames):
-    start_time = time.time()
-    descriptions = []
-    total_tokens_used = 0
-    object_counts = {"human": 0, "car": 0, "animal": 0}
-    # Use the updated batch_describe_images with concurrency
-    batched_results = batch_describe_images(frames, "Describe in Hebrew:", batch_size=20)
-    for desc_batch, tokens_used in batched_results:
-        descriptions.extend(desc_batch)
-        total_tokens_used += tokens_used
-        # Count objects using YOLO model
-        for frame in frames:
-            counts = yolo_model.count_objects(frame)
-            for key in object_counts:
-                object_counts[key] += counts.get(key, 0)
-    summary = summarize_descriptions(descriptions)
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    return summary, elapsed_time, total_tokens_used, object_counts
-
 def split_video_into_segments(video_path, segment_length=10):
-    """
-    Splits the video into segments of up to 'segment_length' seconds each,
-    saves them in a local 'temp_segments' folder, and returns the segment paths.
-    """
-    import os
     import cv2
     folder_path = os.path.join(os.getcwd(), 'temp_segments')
     os.makedirs(folder_path, exist_ok=True)
@@ -444,9 +222,6 @@ def split_video_into_segments(video_path, segment_length=10):
     return segment_paths
 
 def process_segment(segment_path, sample_rate):
-    """
-    Extract frames from a 10-second segment, describe them, and return the partial summary.
-    """
     import cv2
     from PIL import Image
     cap = cv2.VideoCapture(segment_path)
@@ -464,91 +239,192 @@ def process_segment(segment_path, sample_rate):
         frame_count += 1
     cap.release()
 
-    # Analyze frames
     summary_text, _, tokens_used, counts = analyze_frames(frames_extracted)
     return summary_text, tokens_used, len(frames_extracted), counts
 
-def format_time(seconds):
-    return time.strftime("%H:%M:%S", time.gmtime(seconds))
+def analyze_frames(frames):
+    start_time = time.time()
+    descriptions = []
+    total_tokens_used_local = 0
+    object_counts = {"human": 0, "car": 0, "animal": 0}
+    batched_results = batch_describe_images(frames, "Describe in Hebrew:", batch_size=20)
+    for desc_batch, tokens_used in batched_results:
+        descriptions.extend(desc_batch)
+        total_tokens_used_local += tokens_used
+        for frame in frames:
+            counts = yolo_model.count_objects(frame)
+            for key in object_counts:
+                object_counts[key] += counts.get(key, 0)
+    summary = summarize_descriptions(descriptions)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    return summary, elapsed_time, total_tokens_used_local, object_counts
 
-def calculate_price(tokens_used, rate_per_1000_tokens=0.0050):
-    return tokens_used * rate_per_1000_tokens / 1000
+def batch_describe_images(images, content_prompt, batch_size=20):
+    results = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_batch = {}
+        for i in range(0, len(images), batch_size):
+            chat_prompt = [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": "You are an AI assistant that helps people find information."}]
+                },
+                {"role": "user", "content": []}
+            ]
+            for idx, img in enumerate(images[i:i+batch_size]):
+                buffered = io.BytesIO()
+                img.save(buffered, format="JPEG")
+                encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                chat_prompt[1]["content"].append({
+                    "type": "text",
+                    "text": f"{content_prompt} (Image {i+idx+1})"
+                })
+                chat_prompt[1]["content"].append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
+                })
+            future = executor.submit(
+                client.chat.completions.create,
+                model=DEPLOYMENT,
+                messages=chat_prompt,
+                max_tokens=4096,
+                temperature=0,
+                top_p=0.95,
+                frequency_penalty=0,
+                presence_penalty=0,
+                stop=None,
+                stream=False
+            )
+            future_to_batch[future] = i
+        for future in concurrent.futures.as_completed(future_to_batch):
+            completion = future.result()
+            description = completion.choices[0].message.content
+            tokens_used = getattr(completion.usage, 'total_tokens', 0)
+            results.append((description, tokens_used))
+    return results
 
 def run_video_summary_with_object_count():
     st.title("Video Summary with Object Count")
-    temp_segments_dir = os.path.join(os.getcwd(), 'temp_segments')
-    if os.path.exists(temp_segments_dir):
-        shutil.rmtree(temp_segments_dir)
-
-    uploaded_file = st.file_uploader(
-        "Choose a video or image...",
-        type=["mp4", "avi", "mov", "mkv", "jpg", "jpeg", "png"],
+    
+    uploaded_files = st.file_uploader(
+        "Choose video(s)...",
+        type=["mp4", "avi", "mov", "mkv"],
+        accept_multiple_files=True,
         key="uploader2"
     )
-    if uploaded_file is None:
-        st.write("No file uploaded.")
+    if not uploaded_files:
+        st.write("Please upload a video file to proceed.")
         return
 
     sample_rate = st.selectbox(
         "Select frame extraction rate:",
-        options=[1, 2, 0.5, 4],
+        options=[0.5, 1, 2, 4],
         format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
         index=1
     )
-
-    content_prompt = st.text_input("Enter the content prompt:", 
-        value="Analyze the image and describe it in Hebrew. Focus on identifying and detailing cars, animals, and humans. For each detected object, provide as many details as possible.")
-
-    if st.button("Process"):
-        start_time = time.time()
-        # 1. Save video
-        temp_dir = os.path.join(os.getcwd(), 'temp_video')
-        os.makedirs(temp_dir, exist_ok=True)
-        video_path = os.path.join(temp_dir, uploaded_file.name)
-        with open(video_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        st.video(video_path)
-
-        # 2. Process the video with YOLO using tracking to get unique object counts
-        output_video_path = os.path.join(os.path.dirname(video_path), "output.webm")
-        final_output_path, object_counts = yolo_model.process_video_with_counts(video_path, output_video_path)
-        st.video(final_output_path)
-
-        # 3. (Optional) Split video into segments to generate a textual summary.
-        segment_paths = split_video_into_segments(final_output_path, segment_length=10)
-        descriptions = []
-        total_tokens_sum = 0
-        total_frames = 0
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(process_segment, seg_path, sample_rate)
-                for seg_path in segment_paths
-            ]
-            for future in concurrent.futures.as_completed(futures):
-                desc, tokens_used, frames_processed, _ = future.result()
-                descriptions.append(desc)
-                total_tokens_sum += tokens_used
-                total_frames += frames_processed
-
-        # Summarize the descriptions (this is independent of object counting)
-        summary_text = summarize_descriptions(descriptions)
-
-        # 4. Display results
-        st.write("### Summary:")
-        st.write(summary_text)
-        st.write(f"Total tokens used: {total_tokens_sum}")
-        st.write(f"Total frames extracted: {total_frames}")
-        st.write(f"Object counts (tracking based): {object_counts}")
-        price = calculate_price(total_tokens_sum)
-        st.write(f"Price: ${price:.4f}")
-        elapsed_time = time.time() - start_time
-        st.write(f"Total time taken: {elapsed_time:.2f} seconds")
-
-        # 5. Cleanup
-        if os.path.exists(video_path):
-            os.remove(video_path)
-        if os.path.exists(temp_segments_dir):
-            shutil.rmtree(temp_segments_dir)
-
-
+    
+    st.markdown("### Loaded Videos")
+    loaded_videos = [file.name for file in uploaded_files]
+    st.text_area("Loaded Videos", "\n".join(loaded_videos), key="loaded_videos_area", height=150, disabled=True)
+    
+    processing_box = st.empty()
+    finished_box = st.empty()
+    
+    processing_videos = []
+    finished_videos = []
+    
+    if st.button("Process Videos"):
+        results_dir = os.path.join(os.getcwd(), 'results')
+        os.makedirs(results_dir, exist_ok=True)
+        
+        update_counter = 0  # For unique keys
+        
+        # Process each video
+        for uploaded_file in uploaded_files:
+            video_name = uploaded_file.name
+            processing_videos.append(video_name)
+            
+            update_counter += 1
+            processing_box.empty()
+            processing_box.text_area(
+                "Processing Videos",
+                "\n".join(processing_videos),
+                key=f"processing_text_area_{update_counter}",
+                height=150,
+                disabled=True
+            )
+            
+            # Save video temporarily (in temp_video folder)
+            temp_dir = os.path.join(os.getcwd(), 'temp_video')
+            os.makedirs(temp_dir, exist_ok=True)
+            video_path = os.path.join(temp_dir, video_name)
+            with open(video_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.video(video_path)
+            
+            # Process video with YOLO to obtain object counts.
+            # (The processed video is saved only temporarily.)
+            output_video_path = os.path.join(temp_dir, f"{video_name}_processed.webm")
+            final_output_path, object_counts = yolo_model.process_video_with_counts(video_path, output_video_path)
+            st.video(final_output_path)
+            st.write("Object counts (YOLO):", object_counts)
+            
+            # Generate the video description summary via segmentation.
+            segment_paths = split_video_into_segments(final_output_path, segment_length=10)
+            descriptions = []
+            total_tokens_sum = 0
+            total_frames = 0
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = [
+                    executor.submit(process_segment, seg_path, sample_rate)
+                    for seg_path in segment_paths
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    desc, tokens_used, frames_processed, counts = future.result()
+                    descriptions.append(desc)
+                    total_tokens_sum += tokens_used
+                    total_frames += frames_processed
+            
+            summary_text = summarize_descriptions(descriptions)
+            st.write("Video Description Summary:", summary_text)
+            
+            # Write summary and object counts to a text file in the results folder.
+            result_file = os.path.join(results_dir, f"{video_name}_summary.txt")
+            with open(result_file, "w", encoding="utf-8") as rf:
+                rf.write("Video Description Summary:\n")
+                rf.write(summary_text + "\n\n")
+                rf.write("Object Counts (YOLO):\n")
+                rf.write(str(object_counts) + "\n")
+            
+            processing_videos.remove(video_name)
+            finished_videos.append(video_name)
+            
+            update_counter += 1
+            processing_box.empty()
+            processing_box.text_area(
+                "Processing Videos",
+                "\n".join(processing_videos),
+                key=f"processing_text_area_{update_counter}",
+                height=150,
+                disabled=True
+            )
+            update_counter += 1
+            finished_box.empty()
+            finished_box.text_area(
+                "Finished Videos",
+                "\n".join(finished_videos),
+                key=f"finished_text_area_{update_counter}",
+                height=150,
+                disabled=True
+            )
+            
+            # Cleanup temporary video files.
+            if os.path.exists(video_path):
+                os.remove(video_path)
+            if os.path.exists(final_output_path):
+                os.remove(final_output_path)
+        
+        update_counter += 1
+        processing_box.text("All videos processed!")
