@@ -6,3 +6,10 @@
 /detected objects/*
 app.log
 /temp_segments/
+/temp_video
+/tmp_videos
+
+# Ignore video folders
+/videos/
+/video_segments/
+/processed_videos/
