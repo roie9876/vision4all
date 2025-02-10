@@ -263,6 +263,32 @@ def analyze_frames(frames):
     elapsed_time = end_time - start_time
     return summary, elapsed_time, total_tokens_used_local, object_counts
 
+def call_openai_with_retry(chat_prompt, max_retries=5, wait_time=1):
+    attempts = 0
+    while True:
+        try:
+            return client.chat.completions.create(
+                model=DEPLOYMENT,
+                messages=chat_prompt,
+                max_tokens=4096,
+                temperature=0,
+                top_p=0.95,
+                frequency_penalty=0,
+                presence_penalty=0,
+                stop=None,
+                stream=False
+            )
+        except Exception as e:
+            # Check if it is a rate-limit error by searching for "429" in the error message
+            if "429" in str(e):
+                attempts += 1
+                if attempts <= max_retries:
+                    time.sleep(wait_time)
+                else:
+                    raise e
+            else:
+                raise e
+
 def batch_describe_images(images, content_prompt, batch_size=20):
     results = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -287,18 +313,8 @@ def batch_describe_images(images, content_prompt, batch_size=20):
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
                 })
-            future = executor.submit(
-                client.chat.completions.create,
-                model=DEPLOYMENT,
-                messages=chat_prompt,
-                max_tokens=4096,
-                temperature=0,
-                top_p=0.95,
-                frequency_penalty=0,
-                presence_penalty=0,
-                stop=None,
-                stream=False
-            )
+            # Use our helper function to submit the request with retry
+            future = executor.submit(call_openai_with_retry, chat_prompt)
             future_to_batch[future] = i
         for future in concurrent.futures.as_completed(future_to_batch):
             completion = future.result()

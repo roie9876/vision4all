@@ -11,3 +11,5 @@ app.log
 /temp_segments/
 /temp_video
 /tmp_videos
+*.pt
+

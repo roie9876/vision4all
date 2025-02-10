@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 # --------------------------------------------------
 # Import the shared Azure OpenAI client
 # and (optionally) the `deployment` name if needed.
+# source ./venv/bin/activate
 from azure_openai_client import client, DEPLOYMENT
 
 # Local imports (your own modules)

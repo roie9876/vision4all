@@ -314,6 +314,59 @@ def random_start_time():
     second = random.randint(0, 59)
     return datetime(2024, 10, day, hour, minute, second).isoformat()
 
+def refine_summary_with_yolo_counts(description, yolo_counts):
+    """
+    Refine the video summary description using YOLO object counts.
+    Returns a dict with keys 'description' and 'object_counts'.
+    """
+    import json  # Ensure json is imported
+    chat_prompt = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": (
+                "אתה מומחה בניתוח וידאו. ענה אך ורק בעברית וספק תקציר סופי לוידאו עם הערכת מספרי העצמים. "
+                "אם יש אי התאמה בין תוצאות YOLO לתקציר, יש להשתמש בערכי GPT (כלומר, נסה לעדכן את המספרים לפי התיאור)."
+            )}]
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": (
+                    f"תקציר וידאו מקורי:\n{description}\n\n"
+                    f"תוצאות זיהוי עצמים מ-YOLO:\n{json.dumps(yolo_counts, ensure_ascii=False)}\n\n"
+                    "אנא הסק תקציר סופי בעברית והחזר JSON המכיל את השדות 'description' (כתקציר מותאם) "
+                    "ו-'object_counts' (עם המפתחות 'human', 'car', 'animal'). במידה ויש אי התאמה בין הערכים, "
+                    "יש להשתמש במספרים כפי שסיפקת בתקציר שלך."
+                )}
+            ]
+        }
+    ]
+    try:
+        completion = client.chat.completions.create(
+            model=DEPLOYMENT,
+            messages=chat_prompt,
+            max_tokens=800,
+            temperature=0.7,
+            top_p=0.95,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop=None,
+            stream=False
+        )
+        refined_response = completion.choices[0].message.content.strip()
+        # Strip markdown code fencing if present
+        if refined_response.startswith("```json"):
+            refined_response = refined_response[len("```json"):].strip()
+        if refined_response.endswith("```"):
+            refined_response = refined_response[:-3].strip()
+        try:
+            refined_data = json.loads(refined_response)
+        except Exception:
+            refined_data = {"description": refined_response, "object_counts": yolo_counts}
+    except Exception as e:
+        refined_data = {"description": description, "object_counts": yolo_counts}
+    return refined_data
+
 def run_video_summary_with_object_count():
     st.title("Video Summary with Object Count")
     
@@ -377,13 +430,21 @@ def run_video_summary_with_object_count():
             st.video(video_path)
             
             # Process video with YOLO to obtain object counts.
-            output_video_path = os.path.join(temp_dir, f"{video_name}_processed.webm")
+            # Ensure .mp4 extension for H.264
+            output_video_path = os.path.join(temp_dir, f"{video_name}_processed.mp4")
             final_output_path, object_counts = yolo_model.process_video_with_counts(video_path, output_video_path)
-            st.video(final_output_path)
+            
+            # Read as binary and specify format
+            with open(final_output_path, "rb") as video_file:
+                video_bytes = video_file.read()
+            st.video(video_bytes, format="video/mp4")
+            
             st.write("Object counts (YOLO):", object_counts)
             
             # Generate the video description summary via segmentation.
-            segment_paths = split_video_into_segments(final_output_path, segment_length=10)
+            # Changed: use source video_path instead of final_output_path
+            segment_paths = split_video_into_segments(video_path, segment_length=10)
+            
             descriptions = []
             total_tokens_sum = 0
             total_frames = 0
@@ -402,7 +463,14 @@ def run_video_summary_with_object_count():
             summary_text = summarize_descriptions(descriptions)
             st.write("Video Description Summary:", summary_text)
             
-            # Build JSON object for this video
+            # New: Refine summary using YOLO object counts
+            refined = refine_summary_with_yolo_counts(summary_text, object_counts)
+            final_object_counts = refined.get("object_counts", object_counts)
+            st.write("Final Video Summary and Object Counts:", refined.get("description", summary_text), final_object_counts)
+            
+            # Build JSON object for this video using:
+            # "video_descriptions" from the Video Description Summary (summary_text)
+            # and "object_counts" from the refined results (final_object_counts)
             video_info = {
                 "video_descriptions": summary_text,
                 "video_url": "",
@@ -411,8 +479,9 @@ def run_video_summary_with_object_count():
                 "point_longitude": 35.18533746,
                 "CameraID": f"id_{random.randint(1, 20)}",
                 "video_name": video_name,
-                "object_counts": object_counts
+                "object_counts": final_object_counts
             }
+            
             # Write JSON file with the same name as the video (e.g., 1.mp4 -> 1.json)
             base_name, _ = os.path.splitext(video_name)
             json_file_path = os.path.join(results_dir, f"{base_name}.json")
