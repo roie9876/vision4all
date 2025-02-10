@@ -7,6 +7,7 @@ Vision-4all is a Streamlit-based application that allows users to analyze images
 - **Search Object in Image**: Upload a reference image and a target image to detect if the specified object appears in both images.
 - **Detect Objects in Video/Image**: Upload a video or image to detect and list all objects present.
 - **Video/Image Summary**: Upload a video or image to generate a summary description in Hebrew.
+- **Video Summary with Object Count**: Upload a video to generate a summary description and count the objects detected in the video.
 
 ## Setup
 
@@ -56,6 +57,7 @@ Vision-4all is a Streamlit-based application that allows users to analyze images
     - **Video Summary**: Upload a video or image to generate a summary description in Hebrew.
     - **Search Object in Image**: Upload a reference image and a target image to detect if the specified object appears in both images.
     - **Detect Objects**: Upload a video or image to detect and list all objects present.
+    - **Video Summary with Object Count**: Upload a video to generate a summary description and count the objects detected in the video.
 
 ## Project Structure
 
@@ -63,6 +65,7 @@ Vision-4all is a Streamlit-based application that allows users to analyze images
 - `search_object_in_image.py`: Module for searching objects in images.
 - `detected_objects.py`: Module for detecting objects in videos/images.
 - `video_summary.py`: Module for summarizing video/image descriptions.
+- `video_summary_with_object_count.py`: Module for summarizing video descriptions and counting objects.
 - `utils.py`: Utility functions for frame extraction, text summarization, and object detection.
 - `.env`: Environment variables for Azure OpenAI credentials (not included in the repository).
 - `requirements.txt`: List of required Python packages.
@@ -74,3 +77,4 @@ Logs are saved to `app.log` in the project root directory. The log file is clear
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+

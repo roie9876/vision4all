@@ -550,3 +550,5 @@ def run_video_summary_with_object_count():
             os.remove(video_path)
         if os.path.exists(temp_segments_dir):
             shutil.rmtree(temp_segments_dir)
+
+
