@@ -158,7 +158,7 @@ def summarize_text(text):
             },
             {
                 "role": "user",
-                "content": f"Summarize the following text in Hebrew. Ensure that any information related to vehicles, humans, or animals is included in the summar: {text}"
+                "content": f"Summarize the following text in Hebrew. Ensure that any information related to vehicles, humans, or animals is included in the summar. {text}"
             }
         ],
         "temperature": 0.2,

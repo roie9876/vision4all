@@ -29,6 +29,7 @@ from search_object_in_video import run_search_object_in_video
 from detect_change_in_video_and_summary import run_detect_change_in_video_and_summary
 from video_summary_image import run_image_summary, handle_image_upload
 from video_summary_video import run_video_summary  # Add this import
+from video_summary_with_object_count import run_video_summary_with_object_count
 
 # Load environment variables
 load_dotenv()
@@ -46,39 +47,27 @@ http = requests.Session()
 http.mount("https://", adapter)
 http.mount("http://", adapter)
 
-st.sidebar.title("Select an Application")
-app_selection = st.sidebar.radio(
-    "Go to",
-    (
-        "Image Summary",
-        "Video Summary",
-        "Search Object in Image",
-        "Detect Objects",
-        "Search Object in Video",
-        "Detect Change in Video and Summary"
-    )
-)
+def main():
+    st.sidebar.title("Navigation")
+    app_mode = st.sidebar.selectbox("Choose the app mode",
+                                    ["Video Summary", "Detect Change in Video", "Video Summary with Object Count",
+                                     "Detect Objects", "Search Object in Image", "Search Object in Video",
+                                     "Image Summary"])
+    
+    if app_mode == "Video Summary":
+        run_video_summary()
+    elif app_mode == "Detect Change in Video":
+        run_detect_change_in_video_and_summary()
+    elif app_mode == "Video Summary with Object Count":
+        run_video_summary_with_object_count()
+    elif app_mode == "Detect Objects":
+        run_detect_objects()
+    elif app_mode == "Search Object in Image":
+        run_search_object_in_image()
+    elif app_mode == "Search Object in Video":
+        run_search_object_in_video()
+    elif app_mode == "Image Summary":
+        run_image_summary()
 
-if app_selection == "Image Summary":
-    st.write("Upload an image to generate a summary in Hebrew.")
-    run_image_summary()
-
-elif app_selection == "Video Summary":
-    st.write("Upload a video to generate a summary in Hebrew.")
-    run_video_summary()
-
-elif app_selection == "Search Object in Image":
-    st.write("Upload a reference image and a target image to detect if the specified object appears in both images.")
-    run_search_object_in_image()
-
-elif app_selection == "Detect Objects":
-    st.write("Upload a video or image to detect and list all objects present.")
-    run_detect_objects()
-
-elif app_selection == "Search Object in Video":
-    st.write("Upload a reference image, describe the object, and then upload a video to search for that object.")
-    run_search_object_in_video()
-
-elif app_selection == "Detect Change in Video and Summary":
-    st.write("Upload a static webcam video capture to detect changes and summarize them.")
-    run_detect_change_in_video_and_summary()
+if __name__ == "__main__":
+    main()

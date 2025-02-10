@@ -249,7 +249,7 @@ def run_video_summary():
         index=1
     )
 
-    content_prompt = st.text_input("Enter the content prompt:", value="Analyze the image and describe it in Hebrew. Focus on identifying and detailing cars, animals, and humans. If there are moving objects, try to determine if they are human or animal. For each detected object, provide as many details as possible: Cars: Describe the color, type, and model. Animals: Identify the type of animal. Humans: Describe what they are doing, what they are wearing, and if they have any weapons. If the model is unsure whether an object is a car, human, or animal, make the best guess and provide an explanation")
+    content_prompt = st.text_input("Enter the content prompt:", value="Analyze the image and describe it in Hebrew. Focus on identifying and detailing cars, animals, and humans. try to determine the objects like cars or human or animal. For each detected object, provide as many details as possible: Cars: Describe the color, type, and model. Animals: Identify the type of animal. Humans: Describe what they are doing, what they are wearing, and if they have any weapons.even if object is not move, describe it in details.If the ai model is unsure whether an object is a cars, humans, or animals, make the best guess and provide an explanation.")
 
     if st.button("Process"):
         start_time = time.time()
