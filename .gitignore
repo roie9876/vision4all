@@ -1,4 +1,5 @@
 .env
+.venv
 /tmp/*
 /tmp*
 /temp_segments/*
@@ -13,3 +14,7 @@ app.log
 /videos/
 /video_segments/
 /processed_videos/
+
+# Ignore large files
+venv/lib/python3.11/site-packages/pyarrow/libarrow.1900.dylib
+venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.dylib
