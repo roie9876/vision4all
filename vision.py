@@ -29,7 +29,7 @@ from search_object_in_image import run_search_object_in_image
 from search_object_in_video import run_search_object_in_video
 from detect_change_in_video_and_summary import run_detect_change_in_video_and_summary
 from video_summary_image import run_image_summary, handle_image_upload
-from video_summary_video import run_video_summary  # Add this import
+from video_summary_video import run_video_summary, run_ground_change_detection  # <-- UPDATED
 from video_summary_with_object_count import run_video_summary_with_object_count
 
 # Load environment variables
@@ -50,13 +50,22 @@ http.mount("http://", adapter)
 
 def main():
     st.sidebar.title("Navigation")
-    app_mode = st.sidebar.selectbox("Choose the app mode",
-                                    ["Video Summary", "Detect Change in Video", "Video Summary with Object Count",
-                                     "Detect Objects", "Search Object in Image", "Search Object in Video",
-                                     "Image Summary"])
-    
+    app_mode = st.sidebar.selectbox(
+        "Choose the app mode",
+        ["Video Summary",
+         "Ground Change Detection",          # <-- NEW OPTION
+         "Detect Change in Video",
+         "Video Summary with Object Count",
+         "Detect Objects",
+         "Search Object in Image",
+         "Search Object in Video",
+         "Image Summary"]
+    )
+
     if app_mode == "Video Summary":
         run_video_summary()
+    elif app_mode == "Ground Change Detection":           # <-- NEW BRANCH
+        run_ground_change_detection()
     elif app_mode == "Detect Change in Video":
         run_detect_change_in_video_and_summary()
     elif app_mode == "Video Summary with Object Count":

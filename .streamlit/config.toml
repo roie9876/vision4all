@@ -1,3 +1,8 @@
 [server]
 maxUploadSize=1024
+# Disable file watcher to avoid PyTorch conflict
 fileWatcherType = "none"
+
+[runner]
+# Reduce module reloading that might cause the PyTorch error
+fastReruns = false

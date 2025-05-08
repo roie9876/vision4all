@@ -208,6 +208,19 @@ def summarize_image_analysis(image, description):
 
     return summary_text, elapsed_str, st.session_state.total_tokens_used, total_price
 
+def _display_patches_with_text(patches_info):
+    """
+    Render each cropped patch together with the text that belongs to it.
+
+    patches_info: Iterable[Tuple[PIL.Image.Image, str]]
+    """
+    for idx, (img, txt) in enumerate(patches_info, 1):
+        col_img, col_txt = st.columns([1, 3])
+        with col_img:
+            st.image(img, caption=f"Patch #{idx}", use_column_width=True)
+        with col_txt:
+            st.markdown(txt)
+
 def run_image_summary():
     global total_tokens_used  # Access the global token counter
 
@@ -233,6 +246,9 @@ def run_image_summary():
     
     # Display the total number of tokens used
     # st.write(f"Total OpenAI tokens used: {total_tokens_used}")
+
+    # old text-only output removed / replaced ↓
+    _display_patches_with_text(chunks)
 
 if __name__ == '__main__':
     run_image_summary()

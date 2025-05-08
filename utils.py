@@ -46,23 +46,70 @@ http.mount("http://", adapter)
 
 from azure_openai_client import client, DEPLOYMENT  # Fix the NameError by importing client
 
-def call_azure_openai_with_retry(create_kwargs, max_retries=5):
+import logging
+import streamlit as st
+import openai                             # Azure-OpenAI Python SDK
+from openai._exceptions import (          # py-openai ≥1.3.8
+    APITimeoutError,
+    APIConnectionError,
+    RateLimitError,
+    InternalServerError
+)
+
+# --- add safe import for ServiceUnavailableError -----------------
+try:
+    from openai._exceptions import ServiceUnavailableError
+except ImportError:                       # older SDK – create stub so code still works
+    class ServiceUnavailableError(Exception):
+        """Placeholder for missing ServiceUnavailableError in older openai versions."""
+        pass
+# -----------------------------------------------------------------
+
+# ------------------------------------------------------------------
+# Robust retry wrapper used throughout the project
+# ------------------------------------------------------------------
+def _notify_retry(exc: Exception, attempt: int, wait: float):
+    """Show lightweight info about a retry both in the log and Streamlit."""
+    msg = f"Retry {attempt} – waiting {wait:.1f}s due to: {type(exc).__name__}: {exc}"
+    logging.warning(msg)
+    # avoid spamming the UI – show only the first retry & every 3rd thereafter
+    if attempt in (1, 3, 6):
+        st.info(msg)
+
+def _notify_fail(exc: Exception, attempts: int):
+    """Surface a clear error after all retries failed."""
+    err_msg = (
+        "⛔️ הבקשה למודל Azure-OpenAI נכשלה לאחר "
+        f"{attempts} ניסיונות.\n\n"
+        f"{type(exc).__name__}: {exc}\n\n"
+        "אנא נסה שוב מאוחר יותר או פנה לתמיכה אם הבעיה נמשכת."
+    )
+    logging.error(err_msg)
+    st.error(err_msg)
+
+def call_azure_openai_with_retry(create_kwargs: dict,
+                                 max_attempts: int = 6,
+                                 backoff_base: float = 2.0):
     """
-    Calls Azure OpenAI with retries against rate limits.
+    Send a chat completion request with exponential back-off.
+    All project files import this name, so we keep the signature intact.
     """
-    attempt = 0
-    while attempt < max_retries:
+    for attempt in range(1, max_attempts + 1):
         try:
             return client.chat.completions.create(**create_kwargs)
+        except (RateLimitError, APITimeoutError,
+                APIConnectionError, InternalServerError,
+                ServiceUnavailableError, openai.InternalServerError) as e:
+            if attempt == max_attempts:
+                _notify_fail(e, attempt)
+                raise           # bubble up – callers may still want to catch
+            wait = backoff_base ** (attempt - 1)
+            _notify_retry(e, attempt, wait)
+            time.sleep(wait)
         except Exception as e:
-            error_str = str(e)
-            if "429" in error_str:
-                wait_time = 2 ** attempt
-                time.sleep(wait_time)
-                attempt += 1
-            else:
-                raise
-    raise SystemExit("Rate limit exceeded after multiple retries.")
+            # Unknown / non-retryable error – show once and stop
+            _notify_fail(e, attempt=1)
+            raise
 
 def extract_frames(video_path, sample_rate=1.0):
     """
@@ -303,7 +350,7 @@ def describe_images_batch(images, content_prompt, batch_size=38):
         # Generate the completion
         try:
             completion = call_azure_openai_with_retry({
-                "model": deployment,
+                "model": DEPLOYMENT,
                 "messages": chat_prompt,
                 "max_tokens": 4096,
                 "temperature": 0,
