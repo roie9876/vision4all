@@ -237,6 +237,7 @@ def summarize_image_analysis(image, description):
 
 def run_video_summary():
     st.title("Video/Image Summary")
+    prompt_text_area()          # << add UI once
     # Delete 'temp_segments' folder at start
     temp_segments_dir = os.path.join(os.getcwd(), 'temp_segments')
     if os.path.exists(temp_segments_dir):
@@ -254,10 +255,6 @@ def run_video_summary():
         options=[1, 2, 0.5, 4],
         format_func=lambda x: f"{x} frame{'s' if x != 1 else ''} per second",
         index=1
-    )
-    content_prompt = st.text_input(
-        "Enter the content prompt:",
-        value=COMMON_HEBREW_PROMPT
     )
     if st.button("Process"):
         start_time = time.time()
@@ -285,8 +282,10 @@ def run_video_summary():
                 total_tokens_sum += tokens_used
                 total_frames += frames_processed
         # 4. Summarize
-        summary_text = summarize_descriptions(descriptions,
-                                              content_prompt=content_prompt)
+        summary_text = summarize_descriptions(
+            descriptions,
+            content_prompt=get_user_prompt()
+        )
         # 5. Display results
         st.write("### Summary:")
         st.write(summary_text)
@@ -1165,7 +1164,8 @@ def _extract_focused_regions(img_ref, img_aligned,
             ref_t = Image.open(io.BytesIO(base64.b64decode(b64_r)))
             aln_t = Image.open(io.BytesIO(base64.b64decode(b64_a)))
             comp  = Image.new("RGB", (ref_t.width + aln_t.width, ref_t.height))
-            comp.paste(ref_t, (0, 0)); comp.paste(aln_t, (ref_t.width, 0))
+            comp.paste(ref_t, (0, 0))
+            comp.paste(aln_t, (ref_t.width, 0))
             st.image(comp, caption=desc, use_container_width=True)
 
     # ---------- STEP‑1b : Diff‑mask pixel change filter ----------
@@ -1233,6 +1233,28 @@ def _extract_focused_regions(img_ref, img_aligned,
 
     # ---------- STEP-3: sort & return ----------
     tile_after_yolo = len(candidates)
+
+    # --- draw a red border on every remaining tile (so GPT sees it) ---
+    def _with_border(b64_img: str) -> str:
+        """Decode → draw 3-px red rectangle → re-encode."""
+        from PIL import Image, ImageDraw
+        import io, base64
+        img = Image.open(io.BytesIO(base64.b64decode(b64_img))).convert("RGB")
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([0, 0, img.width - 1, img.height - 1], outline="red", width=3)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return base64.b64encode(buf.getvalue()).decode()
+
+    # apply the red border to every surviving candidate _before_ sorting/returning
+    bordered = []
+    for r_b64, a_b64, desc, diff_v in candidates:
+        bordered.append((_with_border(r_b64),
+                         _with_border(a_b64),
+                         desc,
+                         diff_v))
+    candidates = bordered
+
     # ---------- DEBUG : show counts ----------
     if st.session_state.get("show_tile_stats", False):
         st.info(
@@ -1399,3 +1421,24 @@ def _compose_pair(ref_img: Image.Image,
                 st.empty().markdown(st.session_state.get(txt_key, ""),
                                     unsafe_allow_html=True)
 # ...existing code...
+# ---------- unified prompt helpers ----------
+DEFAULT_PROMPT = (
+    "אתה סוכן בינה מלאכותית להשוואת תמונות, עליך להשוות בין שתי התמונות ולהתייחס לקטע אשר מוקף באדם"
+    "המטרה שלך לתאר בעברית האם יש שינוי בין שתי התמונות בריבוע אשר מסומן באדום, במידה ויש שינוי תאר אותו"
+)
+
+def get_user_prompt() -> str:
+    """
+    Return the prompt stored in session (or the default).
+    Call `prompt_text_area()` once per page to render the UI.
+    """
+    return st.session_state.get("user_prompt", DEFAULT_PROMPT)
+
+def prompt_text_area():
+    """Render the prompt editor once per page."""
+    if "user_prompt" not in st.session_state:
+        st.session_state["user_prompt"] = DEFAULT_PROMPT
+    st.text_area("GPT prompt (applies everywhere):",
+                 key="user_prompt",
+                 height=100)
+# -----------------------------------------------------------
