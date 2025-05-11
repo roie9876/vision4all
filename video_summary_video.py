@@ -970,8 +970,30 @@ def run_ground_change_detection():
                 # Analyze each detailed region with significant differences
                 region_analyses = []
                 changed_tiles = []  # Store (region_desc, tile_box) for changed tiles
-                def _one_region(args):
-                    i, (r1_b64, r2_b64, region_desc) = args
+                changed_tile_indices = []
+                all_tile_gpt = []  # Collect GPT analysis for all tiles
+                def _one_region(arg):
+                    # --- DEBUG LOGGING ---
+                    logging.debug(f"_one_region called with arg={arg!r}")
+                    try:
+                        i, region = arg  # Expect exactly 2 elements from enumerate
+                    except ValueError as e:
+                        logging.exception("_one_region: unexpected arg structure")
+                        st.error("⛔ DEBUG: _one_region received unexpected structure; see log.")
+                        return None
+
+                    # region should now be a tuple of 2 or 3 items
+                    if len(region) == 3:
+                        r1_b64, r2_b64, region_desc = region
+                    elif len(region) == 2:
+                        r1_b64, r2_b64 = region
+                        region_desc = f"Region {i}"
+                    else:
+                        logging.error(f"_one_region: region tuple length={len(region)}, data={region!r}")
+                        st.error("⛔ DEBUG: region tuple malformed; see log.")
+                        return None
+                    col = (i-1) % int(st.session_state.get("grid_size", 3)) + 1
+                    row = (i-1) // int(st.session_state.get("grid_size", 3)) + 1
                     region_prompt = [
                         {"role": "system", "content": [
                             {"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות. או כתמים לא ברורים"}
@@ -994,30 +1016,33 @@ def run_ground_change_detection():
                         "stop": None,
                         "stream": False
                     }, label=f"region {i} (pair {idx})")
-                    if resp and hasattr(resp, "choices"):
-                        txt = resp.choices[0].message.content
-                        # Detect if GPT found a change
-                        if ("אין שינויים" not in txt) and ("לא נמצאו שינויים" not in txt):
-                            changed_tiles.append((region_desc, i-1))  # i-1 is the tile index
-                            return f"<b>{region_desc}</b><br>{txt}"
-                    return None
+                    gpt_txt = resp.choices[0].message.content if resp and hasattr(resp, "choices") else "שגיאה בקבלת תוצאה."
+                    all_tile_gpt.append(f"<b>Tile (row={row}, col={col}):</b> {gpt_txt}")
+                    if ("אין שינויים" not in gpt_txt) and ("לא נמצאו שינויים" not in gpt_txt):
+                        changed_tiles.append((region_desc, i-1))
+                        changed_tile_indices.append((col, row))
+                        return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
+                    else:
+                        return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    for ret in pool.map(_one_region, enumerate(regions, 1)):
+                    for ret in pool.map(_one_region, list(enumerate(regions, 1))):
                         if ret:
                             region_analyses.append(ret)
-                # Combine the analyses
                 if region_analyses:
-                    # Summarize all tile changes for the pair
                     combined_analysis = (
-                        "<b>שינויים שהתגלו באריחים:</b><br>" +
+                        "<b>שינויים שהתגלו באריחים (כולל ניתוח GPT לכל אריח):</b><br>" +
                         "<br><br>".join(region_analyses)
                     )
                 else:
                     combined_analysis = "לא זוהו שינויים מהותיים בזוג זה."
-                # Draw rectangles on the changed tiles
-                comp_img = _compose_pair_with_tile_boxes(pair["ref"], pair["aligned"], changed_tiles, grid_size=(int(st.session_state.get("grid_size", 3)), int(st.session_state.get("grid_size", 3))))
-                # Display the pair with marked tiles
-                st.image(comp_img, caption=f"זוג {idx} – אריחים עם שינוי מסומן באדום", use_container_width=True)
+                # Always show all tile GPT analyses below the summary
+                all_tiles_html = ("<br><br><b>GPT analysis for all tiles:</b><br>" + "<br>".join(all_tile_gpt))
+                grid_cols = int(st.session_state.get("grid_size", 3))
+                grid_rows = int(st.session_state.get("grid_size", 3))
+                tile_numbers_str = ", ".join([f"(row={row},col={col})" for col, row in changed_tile_indices])
+                comp_img = _compose_pair_with_tile_boxes(pair["ref"], pair["aligned"], changed_tiles, grid_size=(grid_cols, grid_rows))
+                st.image(comp_img, caption=f"זוג {idx} – אריחים עם שינוי מסומן באדום (grid {grid_cols}×{grid_rows}), אריחים: {tile_numbers_str}", use_container_width=True)
+                st.markdown(all_tiles_html, unsafe_allow_html=True)
                 return idx, combined_analysis
             # Process each pair one at a time to avoid resource contention
             for idx in selected_ids:
@@ -1038,7 +1063,7 @@ def run_ground_change_detection():
                         status_text.text(f"הושלם ניתוח {completed_analyses} מתוך {total_analyses}")
                     except Exception as e:
                         st.error(f"שגיאה בניתוח זוג {idx}: {str(e)}")
-                        logging.error(f"Error analyzing pair {idx}: {str(e)}")
+                        logging.exception(f"Error analyzing pair {idx}")
             # Final update
             progress_bar.progress(1.0)
             status_text.text(f"הניתוח הושלם! נותחו {completed_analyses} מתוך {total_analyses} זוגות.")
@@ -1236,10 +1261,161 @@ def _extract_focused_regions(img_ref, img_aligned,
             f"📊 Tile counts – before SSIM: {tile_total} | "
             f"after SSIM: {tile_after_ssim} | "
             f"after Diff‑mask: {tile_after_diff} | "
-            f"after YOLO: {tile_after_yolo}"
+            f"after GPT: {tile_after_yolo}"
+        )
+        # Show advanced parameters used for this run
+        st.info(
+            "🔧 Parameters in use – "
+            f"grid={cols}×{rows}, "
+            f"MIN_SSIM_DIFF={min_ssim_diff}, "
+            f"diff_mask_thr={st.session_state.get('diff_mask_thr')}%, "
+            f"seg_score_thr={st.session_state.get('seg_score_thr')}, "
+            f"seg_iou_thr={st.session_state.get('seg_iou_thr')}, "
+            f"stable_window={st.session_state.get('stable_window')}, "
+            f"top_k={top_k}, "
+            f"sharp_th={st.session_state.get('sharp_th')}"
         )
     candidates.sort(key=lambda t: t[3], reverse=True)
     return [(r, a, d) for r, a, d, _ in candidates[:top_k]]
+
+def _compose_pair_with_tile_boxes(ref_img, aligned_img, changed_tiles, grid_size=(3, 3)):
+    """
+    Compose a side-by-side image and draw red rectangles on the tiles
+    that were marked as changed.
+
+    changed_tiles entries may be:
+        • int
+        • (desc, idx)
+        • (desc, idx, extra …)
+
+    Only the integer index is required; everything else is ignored.
+    """
+    from PIL import ImageDraw
+
+    comp = Image.new("RGB", (ref_img.width + aligned_img.width, ref_img.height))
+    comp.paste(ref_img, (0, 0))
+    comp.paste(aligned_img, (ref_img.width, 0))
+    draw = ImageDraw.Draw(comp)
+
+    cols, rows = grid_size
+    tile_w, tile_h = ref_img.width // cols, ref_img.height // rows
+
+    # --- robust iteration (no unpacking assumptions) ---
+    for item in changed_tiles:
+        if isinstance(item, int):
+            tile_idx = item
+        elif isinstance(item, (list, tuple)):
+            tile_idx = item[1] if len(item) >= 2 else item[0]
+        else:
+            continue  # unsupported format
+
+        if not isinstance(tile_idx, int) or tile_idx < 0:
+            continue
+
+        row, col = divmod(tile_idx, cols)
+        left, top = col * tile_w, row * tile_h
+        right, bottom = left + tile_w - 1, top + tile_h - 1
+
+        # Draw on "before" image
+        draw.rectangle([left, top, right, bottom], outline="red", width=4)
+        # Draw on "after" image (shifted right)
+        draw.rectangle([left + ref_img.width, top,
+                        right + ref_img.width, bottom],
+                       outline="red", width=4)
+
+    return comp
+
+def _process_pair(pair, custom_prompt):
+    idx = pair["idx"]
+    status_text.text(f"מנתח זוג {idx}...")
+    regions = _extract_focused_regions(
+        pair["ref"],
+        pair["aligned"],
+        grid_size=(int(st.session_state.get("grid_size", 3)),
+                   int(st.session_state.get("grid_size", 3))),
+        top_k=int(st.session_state.get("top_k", 30)),
+        min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", MIN_SSIM_DIFF)),
+        use_segmentation=st.session_state.get("use_segmentation", True)
+    )
+    if not regions:
+        logging.info(f"Pair {idx}: no tiles after SSIM+Segmentation – skipping region GPT.")
+        return idx, "לא נמצאו אריחים עם שינוי מהותי (SSIM+Segmentation)."
+    region_analyses = []
+    changed_tiles = []
+    changed_tile_indices = []
+    all_tile_gpt = []  # Collect GPT analysis for all tiles
+    def _one_region(arg):
+        # --- DEBUG LOGGING ---
+        logging.debug(f"_one_region called with arg={arg!r}")
+        try:
+            i, region = arg  # Expect exactly 2 elements from enumerate
+        except ValueError as e:
+            logging.exception("_one_region: unexpected arg structure")
+            st.error("⛔ DEBUG: _one_region received unexpected structure; see log.")
+            return None
+
+        # region should now be a tuple of 2 or 3 items
+        if len(region) == 3:
+            r1_b64, r2_b64, region_desc = region
+        elif len(region) == 2:
+            r1_b64, r2_b64 = region
+            region_desc = f"Region {i}"
+        else:
+            logging.error(f"_one_region: region tuple length={len(region)}, data={region!r}")
+            st.error("⛔ DEBUG: region tuple malformed; see log.")
+            return None
+        col = (i-1) % int(st.session_state.get("grid_size", 3)) + 1
+        row = (i-1) // int(st.session_state.get("grid_size", 3)) + 1
+        region_prompt = [
+            {"role": "system", "content": [
+                {"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות. או כתמים לא ברורים"}
+            ]},
+            {"role": "user", "content": [
+                {"type": "text", "text": f"אנא תאר אך ורק שינויים מהותיים באזור זה ({region_desc}) – כגון הופעת או היעלמות אובייקטים בולטים, תזוזות משמעותיות, או שינויי קרקע/מבנה ניכרים. התעלם משינויים מינוריים בגוונים, תאורה או תנועות עלים זעירות. עבור כל שינוי מהותי ציין אחוז ודאות (לדוגמה: ודאות: 90%). אם אין שינוי מהותי, כתוב במפורש: 'לא זוהו שינויים מהותיים'."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
+                {"type": "text", "text": "---"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
+            ]}
+        ]
+        resp, _ = _timed_gpt_call({
+            "model": DEPLOYMENT,
+            "messages": region_prompt,
+            "max_tokens": 4096,
+            "temperature": 0,
+            "top_p": 0.95,
+            "frequency_penalty": 0,
+            "presence_penalty": 0,
+            "stop": None,
+            "stream": False
+        }, label=f"region {i} (pair {idx})")
+        gpt_txt = resp.choices[0].message.content if resp and hasattr(resp, "choices") else "שגיאה בקבלת תוצאה."
+        all_tile_gpt.append(f"<b>Tile (row={row}, col={col}):</b> {gpt_txt}")
+        if ("אין שינויים" not in gpt_txt) and ("לא נמצאו שינויים" not in gpt_txt):
+            changed_tiles.append((region_desc, i-1))
+            changed_tile_indices.append((col, row))
+            return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
+        else:
+            return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        for ret in pool.map(_one_region, list(enumerate(regions, 1))):
+            if ret:
+                region_analyses.append(ret)
+    if region_analyses:
+        combined_analysis = (
+            "<b>שינויים שהתגלו באריחים (כולל ניתוח GPT לכל אריח):</b><br>" +
+            "<br><br>".join(region_analyses)
+        )
+    else:
+        combined_analysis = "לא זוהו שינויים מהותיים בזוג זה."
+    # Always show all tile GPT analyses below the summary
+    all_tiles_html = ("<br><br><b>GPT analysis for all tiles:</b><br>" + "<br>".join(all_tile_gpt))
+    grid_cols = int(st.session_state.get("grid_size", 3))
+    grid_rows = int(st.session_state.get("grid_size", 3))
+    tile_numbers_str = ", ".join([f"(row={row},col={col})" for col, row in changed_tile_indices])
+    comp_img = _compose_pair_with_tile_boxes(pair["ref"], pair["aligned"], changed_tiles, grid_size=(grid_cols, grid_rows))
+    st.image(comp_img, caption=f"זוג {idx} – אריחים עם שינוי מסומן באדום (grid {grid_cols}×{grid_rows}), אריחים: {tile_numbers_str}", use_container_width=True)
+    st.markdown(all_tiles_html, unsafe_allow_html=True)
+    return idx, combined_analysis
 
 # Helper to test temporal persistence
 # def _is_persistent(idx, r, c, cube, ssim_th=MIN_SSIM_DIFF, win=1):
@@ -1257,17 +1433,20 @@ def _extract_focused_regions(img_ref, img_aligned,
 #     return False
 
 # ---------- NEW UTILITY ----------
-def _compose_b64_side_by_side(b64_left:str, b64_right:str) -> str:
+def _compose_b64_side_by_side(b64_left: str, b64_right: str) -> str:
     """
-    Build a small side-by-side composite from two base64-encoded JPEGs
-    and return the resulting image encoded back to base64.
+    Return a base64-encoded JPEG that shows the two images side-by-side.
     """
     from PIL import Image
     import base64, io
+
     img_l = Image.open(io.BytesIO(base64.b64decode(b64_left)))
     img_r = Image.open(io.BytesIO(base64.b64decode(b64_right)))
-    comp   = Image.new("RGB", (img_l.width + img_r.width, max(img_l.height, img_r.height)))
-    comp.paste(img_l, (0, 0)); comp.paste(img_r, (img_l.width, 0))
+    comp  = Image.new("RGB", (img_l.width + img_r.width,
+                              max(img_l.height, img_r.height)))
+    comp.paste(img_l, (0, 0))
+    comp.paste(img_r, (img_l.width, 0))
+
     buf = io.BytesIO()
     comp.save(buf, format="JPEG", quality=80)
     return base64.b64encode(buf.getvalue()).decode()
@@ -1367,8 +1546,6 @@ def _compose_pair(ref_img: Image.Image,
                 x_off = ref_img.width
                 for x1, y1, x2, y2 in bboxes:
                     draw.rectangle([x1, y1, x2, y2], outline="red", width=4)
-                    draw.rectangle([x1 + x_off, y1, x2 + x_off, y2],
-                                   outline="red", width=4)
         except Exception as e:
             logging.warning(f"Segmentation overlay failed: {e}")
     return comp
@@ -1417,100 +1594,3 @@ def prompt_text_area():
                  key="user_prompt",
                  height=100)
 # -----------------------------------------------------------
-
-def _compose_pair_with_tile_boxes(ref_img, aligned_img, changed_tiles, grid_size=(3,3)):
-    """
-    Compose a side-by-side image and draw red rectangles on the changed tiles.
-    changed_tiles: list of (region_desc, tile_index)
-    """
-    from PIL import ImageDraw
-    comp = Image.new("RGB", (ref_img.width + aligned_img.width, ref_img.height))
-    comp.paste(ref_img, (0, 0))
-    comp.paste(aligned_img, (ref_img.width, 0))
-    draw = ImageDraw.Draw(comp)
-    cols, rows = grid_size
-    tile_w = ref_img.width // cols
-    tile_h = ref_img.height // rows
-    for _, tile_idx in changed_tiles:
-        y = tile_idx // cols
-        x = tile_idx % cols
-        # Rectangle for ref image
-        left = x * tile_w
-        top = y * tile_h
-        right = left + tile_w - 1
-        bottom = top + tile_h - 1
-        draw.rectangle([left, top, right, bottom], outline="red", width=4)
-        # Rectangle for aligned image
-        left2 = left + ref_img.width
-        right2 = right + ref_img.width
-        draw.rectangle([left2, top, right2, bottom], outline="red", width=4)
-    return comp
-
-def _process_pair(pair, custom_prompt):
-    idx = pair["idx"]
-    status_text.text(f"מנתח זוג {idx}...")
-    # Use session‑selected parameters so the user’s grid/top‑k/threshold are honoured
-    regions = _extract_focused_regions(
-        pair["ref"],
-        pair["aligned"],
-        grid_size=(int(st.session_state.get("grid_size", 3)),
-                   int(st.session_state.get("grid_size", 3))),
-        top_k=int(st.session_state.get("top_k", 30)),
-        min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", MIN_SSIM_DIFF)),
-        use_segmentation=st.session_state.get("use_segmentation", True)
-    )
-    if not regions:
-        logging.info(f"Pair {idx}: no tiles after SSIM+Segmentation – skipping region GPT.")
-        return idx, "לא נמצאו אריחים עם שינוי מהותי (SSIM+Segmentation)."
-    # Analyze each detailed region with significant differences
-    region_analyses = []
-    changed_tiles = []  # Store (region_desc, tile_box) for changed tiles
-    def _one_region(args):
-        i, (r1_b64, r2_b64, region_desc) = args
-        region_prompt = [
-            {"role": "system", "content": [
-                {"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות. או כתמים לא ברורים"}
-            ]},
-            {"role": "user", "content": [
-                {"type": "text", "text": f"אנא תאר אך ורק שינויים מהותיים באזור זה ({region_desc}) – כגון הופעת או היעלמות אובייקטים בולטים, תזוזות משמעותיות, או שינויי קרקע/מבנה ניכרים. התעלם משינויים מינוריים בגוונים, תאורה או תנועות עלים זעירות. עבור כל שינוי מהותי ציין אחוז ודאות (לדוגמה: ודאות: 90%). אם אין שינוי מהותי, כתוב במפורש: 'לא זוהו שינויים מהותיים'."},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
-                {"type": "text", "text": "---"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
-            ]}
-        ]
-        resp, _ = _timed_gpt_call({
-            "model": DEPLOYMENT,
-            "messages": region_prompt,
-            "max_tokens": 4096,
-            "temperature": 0,
-            "top_p": 0.95,
-            "frequency_penalty": 0,
-            "presence_penalty": 0,
-            "stop": None,
-            "stream": False
-        }, label=f"region {i} (pair {idx})")
-        if resp and hasattr(resp, "choices"):
-            txt = resp.choices[0].message.content
-            # Detect if GPT found a change
-            if ("אין שינויים" not in txt) and ("לא נמצאו שינויים" not in txt):
-                changed_tiles.append((region_desc, i-1))  # i-1 is the tile index
-                return f"<b>{region_desc}</b><br>{txt}"
-        return None
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        for ret in pool.map(_one_region, enumerate(regions, 1)):
-            if ret:
-                region_analyses.append(ret)
-    # Combine the analyses
-    if region_analyses:
-        # Summarize all tile changes for the pair
-        combined_analysis = (
-            "<b>שינויים שהתגלו באריחים:</b><br>" +
-            "<br><br>".join(region_analyses)
-        )
-    else:
-        combined_analysis = "לא זוהו שינויים מהותיים בזוג זה."
-    # Draw rectangles on the changed tiles
-    comp_img = _compose_pair_with_tile_boxes(pair["ref"], pair["aligned"], changed_tiles, grid_size=(int(st.session_state.get("grid_size", 3)), int(st.session_state.get("grid_size", 3))))
-    # Display the pair with marked tiles
-    st.image(comp_img, caption=f"זוג {idx} – אריחים עם שינוי מסומן באדום", use_container_width=True)
-    return idx, combined_analysis
