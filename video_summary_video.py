@@ -51,9 +51,11 @@ JPEG_QUALITY    = 95          # better quality for base64 encoding
 # Minimum structural‑difference (1‑SSIM) לסינון רעש
 MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lighting artefacts
 
-COMMON_HEBREW_PROMPT = (
-    "נתח את התמונה וספק תיאור בעברית. התמקד רק בשינויים אשר מוקפים בצבע אדום  כמו הופעה של אובייקט חדש "
-    "או החסרה של אובייקט."
+
+# Canonical Hebrew prompt for all analyses
+ANALYSIS_PROMPT_HE = (
+    "נתח את התמונה וספק תיאור בעברית. התמקד רק בשינויים אשר מוקפים בצבע אדום, "
+    "כמו הופעה של אובייקט חדש או החסרה של אובייקט."
 )
 
 SHARPNESS_THRESHOLD = 120.0     # NEW – default variance-of-Laplacian limit
@@ -408,8 +410,8 @@ def analyze_frames(frames):
     total_tokens_used = 0
     # Use the updated batch_describe_images with concurrency
     batched_results = batch_describe_images(
-        frames, 
-        COMMON_HEBREW_PROMPT, 
+        frames,
+        ANALYSIS_PROMPT_HE,
         batch_size=10
     )
     for desc_batch, tokens_used in batched_results:
@@ -614,7 +616,7 @@ def _show_aligned_pairs(frames_before, frames_after, max_pairs: int = 5):
         comp.paste(aligned_crop, (ref_crop.width, 0))
         st.image(comp, caption=f"זוג {idx} – inliers={inliers}", use_container_width=True)
 
-def _describe_ground_differences(frames_before, frames_after, content_prompt_he="תאר בעברית את השינויים בקרקע בין שתי התמונות."):
+def _describe_ground_differences(frames_before, frames_after, content_prompt_he=ANALYSIS_PROMPT_HE):
     """
     Detect visual changes (simple pixel difference) and ask GPT-Vision
     to describe only the frames with notable ground changes.
@@ -661,7 +663,7 @@ def _run_ground_change_detection_legacy():
     fps_target = st.selectbox("קצב דגימת פריימים", [0.5, 1, 2], index=1)
     custom_prompt = st.text_input(
         "הנחיית תוכן (עברית)",
-        value=COMMON_HEBREW_PROMPT
+        value=ANALYSIS_PROMPT_HE
     )
     if st.button("ניתוח השינויים") and before_file and after_file:
         # Save temp videos
@@ -701,7 +703,9 @@ def _run_ground_change_detection_legacy():
                     img.save(buf, format="JPEG")
                     return base64.b64encode(buf.getvalue()).decode()
                 chat_prompt = [
-                    {"role": "system", "content": [{"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות."}]},
+                    {"role": "system", "content": [
+                        {"type": "text", "text": "You are an AI assistant that helps people find information."}
+                    ]},
                     {"role": "user", "content": [
                         {"type": "text", "text": custom_prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_b64(ref_crop)}"}},
@@ -833,7 +837,7 @@ def run_ground_change_detection():
     # --- unified prompt input -------------------------------
     custom_prompt = st.text_input(
         "הנחיית תוכן (עברית)",
-        value=COMMON_HEBREW_PROMPT
+        value=ANALYSIS_PROMPT_HE
     )
     # Add UI for the new parameters
     with st.expander("Advanced parameters"):
@@ -894,6 +898,11 @@ def run_ground_change_detection():
         st.session_state["show_post_tiles"] = st.checkbox("Show tiles after Mask-R CNN filter (debug)")
         st.session_state["show_tile_stats"] = st.checkbox(
             "Show tile counts at each stage (debug)"
+        )
+        # --- NEW: Show tile debug UI ---
+        st.session_state["show_tile_debug"] = st.checkbox(
+            "Show each tile with GPT answer (debug)",
+            value=False
         )
     if st.button("הכן זוגות") and before_file and after_file:
         # clean old state
@@ -994,15 +1003,32 @@ def run_ground_change_detection():
                         return None
                     col = (i-1) % int(st.session_state.get("grid_size", 3)) + 1
                     row = (i-1) // int(st.session_state.get("grid_size", 3)) + 1
+                    # --- OPTIONAL DEBUG: show the exact tile sent to GPT ---
+                    if st.session_state.get("show_tile_debug", False):
+                        import io, base64
+                        from PIL import Image
+                        ref_dbg = Image.open(io.BytesIO(base64.b64decode(r1_b64)))
+                        aln_dbg = Image.open(io.BytesIO(base64.b64decode(r2_b64)))
+                        comp_dbg = Image.new("RGB", (ref_dbg.width + aln_dbg.width, ref_dbg.height))
+                        comp_dbg.paste(ref_dbg, (0, 0))
+                        comp_dbg.paste(aln_dbg, (ref_dbg.width, 0))
+                        st.image(comp_dbg,
+                                 caption=f"Tile sent to GPT (row={row}, col={col})",
+                                 use_container_width=True)
+                    # --- Build prompt using the single user‑supplied prompt ---
                     region_prompt = [
                         {"role": "system", "content": [
-                            {"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות. או כתמים לא ברורים"}
+                            {"type": "text",
+                             "text": "You are an AI assistant that helps people analyse differences between two images."}
                         ]},
                         {"role": "user", "content": [
-                            {"type": "text", "text": f"אנא תאר אך ורק שינויים מהותיים באזור זה ({region_desc}) – כגון הופעת או היעלמות אובייקטים בולטים, תזוזות משמעותיות, או שינויי קרקע/מבנה ניכרים. התעלם משינויים מינוריים בגוונים, תאורה או תנועות עלים זעירות. עבור כל שינוי מהותי ציין אחוז ודאות (לדוגמה: ודאות: 90%). אם אין שינוי מהותי, כתוב במפורש: 'לא זוהו שינויים מהותיים'."},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
+                            {"type": "text",
+                             "text": f"{custom_prompt} (אזור: {region_desc})"},
+                            {"type": "image_url",
+                             "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
                             {"type": "text", "text": "---"},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
+                            {"type": "image_url",
+                             "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
                         ]}
                     ]
                     resp, _ = _timed_gpt_call({
@@ -1017,6 +1043,12 @@ def run_ground_change_detection():
                         "stream": False
                     }, label=f"region {i} (pair {idx})")
                     gpt_txt = resp.choices[0].message.content if resp and hasattr(resp, "choices") else "שגיאה בקבלת תוצאה."
+                    # --- OPTIONAL DEBUG: show GPT answer for this tile ---
+                    if st.session_state.get("show_tile_debug", False):
+                        st.markdown(
+                            f"<b>GPT answer for tile (row={row}, col={col}):</b> {gpt_txt}",
+                            unsafe_allow_html=True
+                        )
                     all_tile_gpt.append(f"<b>Tile (row={row}, col={col}):</b> {gpt_txt}")
                     if ("אין שינויים" not in gpt_txt) and ("לא נמצאו שינויים" not in gpt_txt):
                         changed_tiles.append((region_desc, i-1))
@@ -1024,10 +1056,16 @@ def run_ground_change_detection():
                         return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
                     else:
                         return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    for ret in pool.map(_one_region, list(enumerate(regions, 1))):
+                if st.session_state.get("show_tile_debug", False):
+                    # Run sequentially so st.image / st.markdown render correctly
+                    for ret in (_one_region(arg) for arg in enumerate(regions, 1)):
                         if ret:
                             region_analyses.append(ret)
+                else:
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        for ret in pool.map(_one_region, list(enumerate(regions, 1))):
+                            if ret:
+                                region_analyses.append(ret)
                 if region_analyses:
                     combined_analysis = (
                         "<b>שינויים שהתגלו באריחים (כולל ניתוח GPT לכל אריח):</b><br>" +
@@ -1366,15 +1404,32 @@ def _process_pair(pair, custom_prompt):
             return None
         col = (i-1) % int(st.session_state.get("grid_size", 3)) + 1
         row = (i-1) // int(st.session_state.get("grid_size", 3)) + 1
+        # --- OPTIONAL DEBUG: show the exact tile sent to GPT ---
+        if st.session_state.get("show_tile_debug", False):
+            import io, base64
+            from PIL import Image
+            ref_dbg = Image.open(io.BytesIO(base64.b64decode(r1_b64)))
+            aln_dbg = Image.open(io.BytesIO(base64.b64decode(r2_b64)))
+            comp_dbg = Image.new("RGB", (ref_dbg.width + aln_dbg.width, ref_dbg.height))
+            comp_dbg.paste(ref_dbg, (0, 0))
+            comp_dbg.paste(aln_dbg, (ref_dbg.width, 0))
+            st.image(comp_dbg,
+                     caption=f"Tile sent to GPT (row={row}, col={col})",
+                     use_container_width=True)
+        # --- Build prompt using the single user‑supplied prompt ---
         region_prompt = [
             {"role": "system", "content": [
-                {"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות. או כתמים לא ברורים"}
+                {"type": "text",
+                 "text": "You are an AI assistant that helps people analyse differences between two images."}
             ]},
             {"role": "user", "content": [
-                {"type": "text", "text": f"אנא תאר אך ורק שינויים מהותיים באזור זה ({region_desc}) – כגון הופעת או היעלמות אובייקטים בולטים, תזוזות משמעותיות, או שינויי קרקע/מבנה ניכרים. התעלם משינויים מינוריים בגוונים, תאורה או תנועות עלים זעירות. עבור כל שינוי מהותי ציין אחוז ודאות (לדוגמה: ודאות: 90%). אם אין שינוי מהותי, כתוב במפורש: 'לא זוהו שינויים מהותיים'."},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
+                {"type": "text",
+                 "text": f"{custom_prompt} (אזור: {region_desc})"},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
                 {"type": "text", "text": "---"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
             ]}
         ]
         resp, _ = _timed_gpt_call({
@@ -1389,6 +1444,12 @@ def _process_pair(pair, custom_prompt):
             "stream": False
         }, label=f"region {i} (pair {idx})")
         gpt_txt = resp.choices[0].message.content if resp and hasattr(resp, "choices") else "שגיאה בקבלת תוצאה."
+        # --- OPTIONAL DEBUG: show GPT answer for this tile ---
+        if st.session_state.get("show_tile_debug", False):
+            st.markdown(
+                f"<b>GPT answer for tile (row={row}, col={col}):</b> {gpt_txt}",
+                unsafe_allow_html=True
+            )
         all_tile_gpt.append(f"<b>Tile (row={row}, col={col}):</b> {gpt_txt}")
         if ("אין שינויים" not in gpt_txt) and ("לא נמצאו שינויים" not in gpt_txt):
             changed_tiles.append((region_desc, i-1))
@@ -1396,10 +1457,16 @@ def _process_pair(pair, custom_prompt):
             return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
         else:
             return f"<b>{region_desc} (עמודה {col}, שורה {row})</b><br>{gpt_txt}"
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        for ret in pool.map(_one_region, list(enumerate(regions, 1))):
+    if st.session_state.get("show_tile_debug", False):
+        # Run sequentially so st.image / st.markdown render correctly
+        for ret in (_one_region(arg) for arg in enumerate(regions, 1)):
             if ret:
                 region_analyses.append(ret)
+    else:
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            for ret in pool.map(_one_region, list(enumerate(regions, 1))):
+                if ret:
+                    region_analyses.append(ret)
     if region_analyses:
         combined_analysis = (
             "<b>שינויים שהתגלו באריחים (כולל ניתוח GPT לכל אריח):</b><br>" +
@@ -1574,10 +1641,7 @@ def _compose_pair(ref_img: Image.Image,
                                     unsafe_allow_html=True)
 # ...existing code...
 # ---------- unified prompt helpers ----------
-DEFAULT_PROMPT = (
-    "אתה סוכן בינה מלאכותית להשוואת תמונות, עליך להשוות בין שתי התמונות ולהתייחס לקטע אשר מוקף באדם"
-    "המטרה שלך לתאר בעברית האם יש שינוי בין שתי התמונות בריבוע אשר מסומן באדום, במידה ויש שינוי תאר אותו"
-)
+DEFAULT_PROMPT = ANALYSIS_PROMPT_HE
 
 def get_user_prompt() -> str:
     """
