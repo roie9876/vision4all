@@ -1,3 +1,4 @@
+#temp#
 import streamlit as st
 import tempfile
 import os
@@ -49,7 +50,7 @@ MAX_DIM_FOR_GPT = 2048        # longest side sent to GPT-4o
 JPEG_QUALITY    = 95          # better quality for base64 encoding
 # ---------------------------------------------------
 # Minimum structural‑difference (1‑SSIM) לסינון רעש
-MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lighting artefacts
+MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lighting artefactss
 
 COMMON_HEBREW_PROMPT = (
     "נתח את התמונה וספק תיאור בעברית. התמקד רק בשינויים אשר מוקפים בצבע אדום  כמו הופעה של אובייקט חדש "
@@ -573,7 +574,7 @@ def _crop_to_overlap(img_ref: Image.Image, img_aligned: Image.Image, grid_size=(
 
     ys_ref, xs_ref     = np.where(mask_ref)
     ys_align, xs_align = np.where(mask_align)
-    if xs_ref.size == 0 or ys_ref.size == 0 or xs_align.size == 0 or ys_align.size == 0:
+    if xs_ref.size == 0 or ys_ref.size == 0 or xs_align.size == 0:
         return img_ref, img_aligned
     # bounding boxes
     x1_ref,  x2_ref  = xs_ref.min(),   xs_ref.max()
@@ -635,7 +636,7 @@ def _describe_ground_differences(frames_before, frames_after, content_prompt_he=
         if diff > 10:  # threshold – tune as needed
             combo = Image.new("RGB", (a1.shape[1] * 2, a1.shape[0]))
             combo.paste(f1.resize((320, 320)), (0, 0))
-            combo.paste(aligned_f2.resize((320, 320)), (320, 0))
+            combo.paste(aligned_f2.resize((320, 0)))
             changed_frames.append(combo)
             st.image(combo, caption=f"זוג {idx} – diff={diff:.1f}, inliers={inliers}", use_container_width=True)
     if not changed_frames:
@@ -916,132 +917,48 @@ def run_ground_change_detection():
         # keep temp dir so crops stay valid during session
         st.session_state.temp_dir_gc = tmp
 
-    # ---------- show pairs if we already have them ----------
+    # ---------- show pairs & final report ----------
     if "ground_pairs" in st.session_state:
-        selected_ids = []
-        # flag once per rerun – avoids NameError
-        for pair in st.session_state.ground_pairs:
-            idx = pair["idx"]
-            # create a dedicated container so answer is shown right below the pair
-            pair_container = st.container()
-            with pair_container:
-                comp_img = _compose_pair(pair["ref"],
-                                         pair["aligned"],
-                                         draw_seg=False)     # NEW
-                st.image(comp_img,
-                         caption=f"זוג {idx} – inliers={pair['inliers']}",
-                         use_container_width=True)
-                # checkbox for selection
-                if st.checkbox(f"נתח זוג {idx}", key=f"chk_pair_{idx}"):
-                    selected_ids.append(idx)
-                # --- GPT output placeholder handling ---
-                txt_key = f"gpt_txt_{idx}"        # stores rendered markdown string
-                # Always create a fresh placeholder *inside this container*
-                st.empty().markdown(                # ← fresh element each rerun
-                    st.session_state.get(txt_key, ""),
-                    unsafe_allow_html=True
-                )
-        if st.button("Analyze selected pairs") and selected_ids:
-            st.info("מריץ ניתוח מעמיק לפי חלוקה לאזורים...")
-            # Create a progress bar to show overall progress
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            status_text.text("מתחיל ניתוח...")
-            # Track the total number of analyses and completed ones
-            total_analyses = len(selected_ids)
-            completed_analyses = 0
-            import concurrent.futures
-            def _process_pair(pair, custom_prompt):
+        # Two tabs: analysis view and final report
+        tab_analysis, tab_report = st.tabs(["🔍 ניתוח", "📄 דו\"ח סופי"])
+
+        # -------- ANALYSIS TAB --------
+        with tab_analysis:
+            selected_ids = []
+            for pair in st.session_state.ground_pairs:
                 idx = pair["idx"]
-                status_text.text(f"מנתח זוג {idx}...")
-                # Use session‑selected parameters so the user’s grid/top‑k/threshold are honoured
-                regions = _extract_focused_regions(
-                    pair["ref"],
-                    pair["aligned"],
-                    grid_size=(int(st.session_state.get("grid_size", 3)),
-                               int(st.session_state.get("grid_size", 3))),
-                    top_k=int(st.session_state.get("top_k", 30)),
-                    min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", MIN_SSIM_DIFF)),
-                    use_segmentation=st.session_state.get("use_segmentation", True)
-                )
-                if not regions:
-                    logging.info(f"Pair {idx}: no tiles after SSIM+Segmentation – skipping region GPT.")
-                    return idx, "לא נמצאו אריחים עם שינוי מהותי (SSIM+Segmentation)."
-                # Analyze each detailed region with significant differences
-                region_analyses = []
-                changed_tiles = []  # Store (region_desc, tile_box) for changed tiles
-                def _one_region(args):
-                    i, (r1_b64, r2_b64, region_desc) = args
-                    region_prompt = [
-                        {"role": "system", "content": [
-                            {"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות. או כתמים לא ברורים"}
-                        ]},
-                        {"role": "user", "content": [
-                            {"type": "text", "text": f"אנא תאר אך ורק שינויים מהותיים באזור זה ({region_desc}) – כגון הופעת או היעלמות אובייקטים בולטים, תזוזות משמעותיות, או שינויי קרקע/מבנה ניכרים. התעלם משינויים מינוריים בגוונים, תאורה או תנועות עלים זעירות. עבור כל שינוי מהותי ציין אחוז ודאות (לדוגמה: ודאות: 90%). אם אין שינוי מהותי, כתוב במפורש: 'לא זוהו שינויים מהותיים'."},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
-                            {"type": "text", "text": "---"},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
-                        ]}
-                    ]
-                    resp, _ = _timed_gpt_call({
-                        "model": DEPLOYMENT,
-                        "messages": region_prompt,
-                        "max_tokens": 4096,
-                        "temperature": 0,
-                        "top_p": 0.95,
-                        "frequency_penalty": 0,
-                        "presence_penalty": 0,
-                        "stop": None,
-                        "stream": False
-                    }, label=f"region {i} (pair {idx})")
-                    if resp and hasattr(resp, "choices"):
-                        txt = resp.choices[0].message.content
-                        # Detect if GPT found a change
-                        if ("אין שינויים" not in txt) and ("לא נמצאו שינויים" not in txt):
-                            changed_tiles.append((region_desc, i-1))  # i-1 is the tile index
-                            return f"<b>{region_desc}</b><br>{txt}"
-                    return None
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    for ret in pool.map(_one_region, enumerate(regions, 1)):
-                        if ret:
-                            region_analyses.append(ret)
-                # Combine the analyses
-                if region_analyses:
-                    # Summarize all tile changes for the pair
-                    combined_analysis = (
-                        "<b>שינויים שהתגלו באריחים:</b><br>" +
-                        "<br><br>".join(region_analyses)
-                    )
-                else:
-                    combined_analysis = "לא זוהו שינויים מהותיים בזוג זה."
-                # Draw rectangles on the changed tiles
-                comp_img = _compose_pair_with_tile_boxes(pair["ref"], pair["aligned"], changed_tiles, grid_size=(int(st.session_state.get("grid_size", 3)), int(st.session_state.get("grid_size", 3))))
-                # Display the pair with marked tiles
-                st.image(comp_img, caption=f"זוג {idx} – אריחים עם שינוי מסומן באדום", use_container_width=True)
-                return idx, combined_analysis
-            # Process each pair one at a time to avoid resource contention
-            for idx in selected_ids:
-                # Find the pair with the matching idx
-                pair = next((p for p in st.session_state.ground_pairs if p["idx"] == idx), None)
-                if pair:
-                    try:
-                        result_idx, analysis_text = _process_pair(pair, custom_prompt)
-                        # Prepare markdown
-                        md = (f'<div dir="rtl" style="background:#f7f7f7;padding:8px;border-radius:8px">'
-                              f'### תוצאה לזוג {result_idx}<br><br>{analysis_text}</div>')
-                        # Save & render
-                        st.session_state[f"gpt_txt_{result_idx}"] = md   # cache text only
-                        st.markdown(md, unsafe_allow_html=True)          # show immediately
-                        # Update progress
-                        completed_analyses += 1
-                        progress_bar.progress(completed_analyses / total_analyses)
-                        status_text.text(f"הושלם ניתוח {completed_analyses} מתוך {total_analyses}")
-                    except Exception as e:
-                        st.error(f"שגיאה בניתוח זוג {idx}: {str(e)}")
-                        logging.error(f"Error analyzing pair {idx}: {str(e)}")
-            # Final update
-            progress_bar.progress(1.0)
-            status_text.text(f"הניתוח הושלם! נותחו {completed_analyses} מתוך {total_analyses} זוגות.")
+                container = st.container()
+                with container:
+                    # side-by-side pair (no red overlay)
+                    comp_img = _compose_pair(pair["ref"], pair["aligned"], draw_seg=False)
+                    st.image(comp_img,
+                             caption=f"זוג {idx} – inliers={pair['inliers']}",
+                             use_container_width=True)
+                    # selection check-box
+                    if st.checkbox(f"נתח זוג {idx}", key=f"chk_pair_{idx}"):
+                        selected_ids.append(idx)
+                    # placeholder for GPT result
+                    txt_key = f"gpt_txt_{idx}"
+                    st.markdown(st.session_state.get(txt_key, ""),
+                                unsafe_allow_html=True)
+
+            # run GPT analysis on the chosen pairs
+            if st.button("Analyze selected pairs") and selected_ids:
+                _run_pairs_analysis(selected_ids, custom_prompt)  # ← existing helper
+
+        # -------- FINAL-REPORT TAB --------
+        with tab_report:
+            report = st.session_state.get("report_data", [])
+            if not report:
+                st.write("אין ממצאים להצגה עדיין.")
+            else:
+                for entry in report:
+                    st.image(f"data:image/jpeg;base64,{entry['pair_b64']}",
+                             caption=f"זוג {entry['pair_idx']}",
+                             use_container_width=True)
+                    st.image(f"data:image/jpeg;base64,{entry['tile_b64']}",
+                             caption=entry["text"],
+                             use_container_width=True)
 
 def _extract_focused_regions(img_ref, img_aligned,
                              grid_size=(3, 3), top_k: int = 30,
@@ -1067,17 +984,26 @@ def _extract_focused_regions(img_ref, img_aligned,
     show_pre  = bool(st.session_state.get("show_pre_tiles",  False))
     show_post = bool(st.session_state.get("show_post_tiles", False))
     show_before = bool(st.session_state.get("show_before_tiles", False))
+
     # --- counters for debug statistics ---
     tile_total = 0          # number of tiles before any filtering
     tile_after_ssim = 0     # tiles that survived SSIM filter
     # tile_after_yolo will be computed later
 
-    # ---------- STEP-1: grid & SSIM (build candidate list) ----------
+    # --- NEW: force-sync with the UI value ---
+    min_ssim_diff = float(st.session_state.get("MIN_SSIM_DIFF", min_ssim_diff))
+    # -----------------------------------------
+
+    diff_values = []          # NEW – collect diff-SSIM values for debug
+
+    # ---------- geometry helpers (NEEDED for the loop) ----------
     width, height = img_ref.size
     cols, rows = grid_size
-    tile_width = width // cols
+    tile_width  = width  // cols
     tile_height = height // rows
-    candidates_raw = []   # temporary (heterogeneous length)
+    # ------------------------------------------------------------
+
+    # ---------- STEP-1 -------------------------------------------------
     for y in range(rows):
         for x in range(cols):
             tile_total += 1
@@ -1103,6 +1029,7 @@ def _extract_focused_regions(img_ref, img_aligned,
             ref_gray     = cv2.cvtColor(ref_arr, cv2.COLOR_RGB2GRAY)
             aligned_gray = cv2.cvtColor(aligned_arr, cv2.COLOR_RGB2GRAY)
             diff_ssim = 1.0 - ssim(ref_gray, aligned_gray)
+            diff_values.append(diff_ssim)      # NEW
             position_desc = f"חלק {x+1},{y+1} - שורה {y+1}, עמודה {x+1}"
             if show_before:
                 dbg = Image.new("RGB", (ref_tile.width + aligned_tile.width, ref_tile.height))
@@ -1125,7 +1052,8 @@ def _extract_focused_regions(img_ref, img_aligned,
                 img_to_b64(ref_tile),          # 0
                 img_to_b64(aligned_tile),      # 1
                 position_desc,                 # 2
-                diff_ssim                      # 3
+                diff_ssim,                     # 3
+                (left, upper, right, lower)      # <-- NEW: absolute coords in ref_img
             ))
             tile_after_ssim += 1
 
@@ -1133,21 +1061,20 @@ def _extract_focused_regions(img_ref, img_aligned,
     candidates = candidates_raw
 
     # ---------- DEBUG : view tiles kept after SSIM ----------
-    if show_pre and candidates:
-        st.subheader("🔍 Tiles after SSIM filter")
-        for b64_r, b64_a, desc, _ in candidates[:top_k]:
-            ref_t = Image.open(io.BytesIO(base64.b64decode(b64_r)))
-            aln_t = Image.open(io.BytesIO(base64.b64decode(b64_a)))
-            comp  = Image.new("RGB", (ref_t.width + aln_t.width, ref_t.height))
-            comp.paste(ref_t, (0, 0))
-            comp.paste(aln_t, (ref_t.width, 0))
-            st.image(comp, caption=desc, use_container_width=True)
+    if show_pre and candidates:                         # NEW
+        st.subheader("🔍 Tiles after SSIM filter")      # NEW
+        for b64_r, b64_a, desc, _, box in candidates[:top_k]:   # NEW
+            ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))  # NEW
+            aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))  # NEW
+            comp = Image.new("RGB", (ref_img.width + aln_img.width, ref_img.height))  # NEW
+            comp.paste(ref_img, (0, 0)); comp.paste(aln_img, (ref_img.width, 0))      # NEW
+            st.image(comp, caption=desc, use_container_width=True)                    # NEW
 
     # ---------- STEP‑1b : Diff‑mask pixel change filter ----------
     diff_thr = float(st.session_state.get("diff_mask_thr", 3.0)) / 100.0  # convert %→fraction
     diff_filtered = []
     tile_after_diff = 0
-    for b64_r, b64_a, desc, diff_val in candidates:
+    for b64_r, b64_a, desc, diff_val, box in candidates:
         ref_tile = Image.open(io.BytesIO(base64.b64decode(b64_r)))
         aln_tile = Image.open(io.BytesIO(base64.b64decode(b64_a)))
         # simple abs‑diff on grayscale
@@ -1157,16 +1084,16 @@ def _extract_focused_regions(img_ref, img_aligned,
         _, mask = cv2.threshold(absdiff, 25, 255, cv2.THRESH_BINARY)
         changed_ratio = mask.mean() / 255.0
         if changed_ratio >= diff_thr:
-            diff_filtered.append((b64_r, b64_a, desc, diff_val))
+            diff_filtered.append((b64_r, b64_a, desc, diff_val, box))
             tile_after_diff += 1
     candidates = diff_filtered
 
-    # Debug view of diff‑mask tiles
+    # Debug view of diff‑mask tiles: view tiles kept after SSIM ----------
     if st.session_state.get("show_diff_tiles", False) and candidates:
         st.subheader("⚡️ Tiles after Diff‑mask filter")
-        for b64_r, b64_a, desc, _ in candidates[:top_k]:
-            ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))
-            aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))
+        for b64_r, b64_a, desc, _, box in candidates[:top_k]:
+            ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))   # FIX
+            aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))   # FIX
             comp  = Image.new("RGB", (ref_img.width + aln_img.width, ref_img.height))
             comp.paste(ref_img, (0, 0)); comp.paste(aln_img, (ref_img.width, 0))
             st.image(comp, caption=desc, use_container_width=True)
@@ -1176,7 +1103,7 @@ def _extract_focused_regions(img_ref, img_aligned,
         score_thr = float(st.session_state.get("seg_score_thr", 0.50))
         iou_thr   = float(st.session_state.get("seg_iou_thr", 0.30))
         filtered  = []
-        for b64_r, b64_a, desc, diff in candidates:
+        for b64_r, b64_a, desc, diff, box in candidates:
             ref_tile  = Image.open(io.BytesIO(base64.b64decode(b64_r)))
             aln_tile  = Image.open(io.BytesIO(base64.b64decode(b64_a)))
             boxes = _maskrcnn_new_objects(ref_tile, aln_tile,
@@ -1193,15 +1120,16 @@ def _extract_focused_regions(img_ref, img_aligned,
             filtered.append((img_to_b64(ref_draw),
                              img_to_b64(aln_draw),
                              desc,
-                             diff))
+                             diff,
+                             box))
         candidates = filtered
 
         # ---------- DEBUG : view tiles that passed the YOLO test ----------
         if show_post and candidates:
             st.subheader("🎯 Tiles after Segmentation filter")
-            for b64_r, b64_a, desc, _ in candidates[:top_k]:
-                ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))
-                aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))
+            for b64_r, b64_a, desc, _, box in candidates[:top_k]:
+                ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))  # FIX
+                aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))  # FIX
                 comp  = Image.new("RGB", (ref_img.width + aln_img.width, ref_img.height))
                 comp.paste(ref_img, (0, 0)); comp.paste(aln_img, (ref_img.width, 0))
                 st.image(comp, caption=desc, use_container_width=True)
@@ -1223,38 +1151,46 @@ def _extract_focused_regions(img_ref, img_aligned,
 
     # apply the red border to every surviving candidate _before_ sorting/returning
     bordered = []
-    for r_b64, a_b64, desc, diff_v in candidates:
+    for r_b64, a_b64, desc, diff_v, box in candidates:
         bordered.append((_with_border(r_b64),
                          _with_border(a_b64),
                          desc,
-                         diff_v))
+                         diff_v,
+                         box))
     candidates = bordered
 
     # ---------- DEBUG : show counts ----------
     if st.session_state.get("show_tile_stats", False):
+        # ...existing tile-count message...
         st.info(
             f"📊 Tile counts – before SSIM: {tile_total} | "
             f"after SSIM: {tile_after_ssim} | "
-            f"after Diff‑mask: {tile_after_diff} | "
+            f"after Diff-mask: {tile_after_diff} | "
             f"after YOLO: {tile_after_yolo}"
         )
+        # NEW – SSIM statistics & quick histogram
+        if diff_values:
+            dv = np.array(diff_values)
+            st.info(
+                f"🔍 SSIM-diff stats – min={dv.min():.3f}, "
+                f"mean={dv.mean():.3f}, max={dv.max():.3f}, "
+                f"threshold={min_ssim_diff}"
+            )
+            st.bar_chart(dv, use_container_width=True)
+        # NEW – show parameter set (kept unchanged)
+        st.info(
+            "🔧 Parameters in use – "
+            f"grid={grid_size[0]}×{grid_size[1]}, "
+            f"MIN_SSIM_DIFF={min_ssim_diff:.3f}, "
+            f"diff_mask_thr={st.session_state.get('diff_mask_thr')} %, "
+            f"seg_score_thr={st.session_state.get('seg_score_thr')}, "
+            f"seg_iou_thr={st.session_state.get('seg_iou_thr')}, "
+            f"stable_window={st.session_state.get('stable_window')}, "
+            f"top_k={top_k}, "
+            f"sharp_th={st.session_state.get('sharp_th')}"
+        )
     candidates.sort(key=lambda t: t[3], reverse=True)
-    return [(r, a, d) for r, a, d, _ in candidates[:top_k]]
-
-# Helper to test temporal persistence
-# def _is_persistent(idx, r, c, cube, ssim_th=MIN_SSIM_DIFF, win=1):
-#     """
-#     Return True if tile (r,c) at pair `idx` exceeds threshold AND the same tile
-#     exceeds threshold in at least one neighbouring pair within ±win.
-#     """
-#     if cube[idx, r, c] < ssim_th:
-#         return False
-#     lo = max(0, idx - win)
-#     hi = min(cube.shape[0] - 1, idx + win)
-#     for j in range(lo, hi + 1):
-#         if j != idx and cube[j, r, c] >= ssim_th:
-#             return True
-#     return False
+    return [(r, a, d, box) for r, a, d, _, box in candidates[:top_k]]
 
 # ---------- NEW UTILITY ----------
 def _compose_b64_side_by_side(b64_left:str, b64_right:str) -> str:
@@ -1312,7 +1248,8 @@ def _get_maskrcnn_model():
     global _MASKRCNN_MODEL
     if _MASKRCNN_MODEL is None:
         _MASKRCNN_MODEL = torchvision.models.detection.maskrcnn_resnet50_fpn(
-            weights="DEFAULT")
+            weights="DEFAULT"
+        )
         _MASKRCNN_MODEL.eval()
     return _MASKRCNN_MODEL
 
@@ -1376,26 +1313,6 @@ def _compose_pair(ref_img: Image.Image,
 
 # ...existing code...
 
-# ---------- show pairs ----------
-    if "ground_pairs" in st.session_state:
-        selected_ids = []          # cache flag once
-        for pair in st.session_state.ground_pairs:
-            idx = pair["idx"]
-
-            pair_container = st.container()
-            with pair_container:
-                comp_img = _compose_pair(pair["ref"], pair["aligned"])     # NEW
-                st.image(comp_img,
-                         caption=f"זוג {idx} – inliers={pair['inliers']}",
-                         use_container_width=True)
-
-                if st.checkbox(f"נתח זוג {idx}", key=f"chk_pair_{idx}"):
-                    selected_ids.append(idx)
-
-                txt_key = f"gpt_txt_{idx}"
-                st.empty().markdown(st.session_state.get(txt_key, ""),
-                                    unsafe_allow_html=True)
-# ...existing code...
 # ---------- unified prompt helpers ----------
 DEFAULT_PROMPT = (
     "אתה סוכן בינה מלאכותית להשוואת תמונות, עליך להשוות בין שתי התמונות ולהתייחס לקטע אשר מוקף באדם"
@@ -1418,99 +1335,131 @@ def prompt_text_area():
                  height=100)
 # -----------------------------------------------------------
 
-def _compose_pair_with_tile_boxes(ref_img, aligned_img, changed_tiles, grid_size=(3,3)):
-    """
-    Compose a side-by-side image and draw red rectangles on the changed tiles.
-    changed_tiles: list of (region_desc, tile_index)
-    """
-    from PIL import ImageDraw
-    comp = Image.new("RGB", (ref_img.width + aligned_img.width, ref_img.height))
-    comp.paste(ref_img, (0, 0))
-    comp.paste(aligned_img, (ref_img.width, 0))
-    draw = ImageDraw.Draw(comp)
-    cols, rows = grid_size
-    tile_w = ref_img.width // cols
-    tile_h = ref_img.height // rows
-    for _, tile_idx in changed_tiles:
-        y = tile_idx // cols
-        x = tile_idx % cols
-        # Rectangle for ref image
-        left = x * tile_w
-        top = y * tile_h
-        right = left + tile_w - 1
-        bottom = top + tile_h - 1
-        draw.rectangle([left, top, right, bottom], outline="red", width=4)
-        # Rectangle for aligned image
-        left2 = left + ref_img.width
-        right2 = right + ref_img.width
-        draw.rectangle([left2, top, right2, bottom], outline="red", width=4)
-    return comp
+# ---------- REPORT HELPERS ---------------------------------
+def _compose_pair_b64(img_l: Image.Image, img_r: Image.Image) -> str:
+    """Return side-by-side composite (JPEG→b64) with NO red overlay."""
+    import base64, io
+    comp = Image.new("RGB", (img_l.width + img_r.width, img_l.height))
+    comp.paste(img_l, (0, 0)); comp.paste(img_r, (img_l.width, 0))
+    buf = io.BytesIO()
+    comp.save(buf, format="JPEG", quality=85)
+    return base64.b64encode(buf.getvalue()).decode()
 
-def _process_pair(pair, custom_prompt):
-    idx = pair["idx"]
-    status_text.text(f"מנתח זוג {idx}...")
-    # Use session‑selected parameters so the user’s grid/top‑k/threshold are honoured
-    regions = _extract_focused_regions(
-        pair["ref"],
-        pair["aligned"],
-        grid_size=(int(st.session_state.get("grid_size", 3)),
-                   int(st.session_state.get("grid_size", 3))),
-        top_k=int(st.session_state.get("top_k", 30)),
-        min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", MIN_SSIM_DIFF)),
-        use_segmentation=st.session_state.get("use_segmentation", True)
-    )
-    if not regions:
-        logging.info(f"Pair {idx}: no tiles after SSIM+Segmentation – skipping region GPT.")
-        return idx, "לא נמצאו אריחים עם שינוי מהותי (SSIM+Segmentation)."
-    # Analyze each detailed region with significant differences
-    region_analyses = []
-    changed_tiles = []  # Store (region_desc, tile_box) for changed tiles
-    def _one_region(args):
-        i, (r1_b64, r2_b64, region_desc) = args
-        region_prompt = [
+def _compose_pair_b64_with_box(img_l: Image.Image,
+                               img_r: Image.Image,
+                               box: tuple) -> str:
+    """
+    Same as _compose_pair_b64 but also paints a red rectangle (3 px)
+    on both halves at `box` (coords refer to the *left* image).
+    """
+    import base64, io
+    comp = Image.new("RGB", (img_l.width + img_r.width, img_l.height))
+    comp.paste(img_l, (0, 0)); comp.paste(img_r, (img_l.width, 0))
+    if box:
+        from PIL import ImageDraw
+        draw = ImageDraw.Draw(comp)
+        draw.rectangle(box, outline="red", width=3)            # left half
+        x1, y1, x2, y2 = box
+        draw.rectangle([x1 + img_l.width, y1, x2 + img_l.width, y2],
+                       outline="red", width=3)                 # right half
+    buf = io.BytesIO()
+    comp.save(buf, format="JPEG", quality=85)
+    return base64.b64encode(buf.getvalue()).decode()
+
+def _add_report_entry(pair_idx: int,
+                      pair_b64: str,
+                      tile_b64: str,
+                      gpt_text: str,
+                      box: tuple = None):      # <-- NEW param
+    """Append a single tile-level finding to the session report list."""
+    if "report_data" not in st.session_state:
+        st.session_state.report_data = []
+    st.session_state.report_data.append({
+        "pair_idx": pair_idx,
+        "pair_b64": pair_b64,
+        "tile_b64": tile_b64,
+        "text": gpt_text,
+        "box": box                               # keep for reuse
+    })
+# -----------------------------------------------------------
+
+# -----------------------------------------------------------
+# 🆕  TEMP-FIX : run analysis for the selected pairs
+def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
+    """
+    Quick replacement for the previously inlined analysis block.
+    Generates a single GPT-overview answer for each selected pair and
+    updates both the on-screen placeholder and the report tab.
+    """
+    if not selected_ids:
+        return
+
+    progress = st.progress(0.0)
+    status   = st.empty()
+    total    = len(selected_ids)
+    done     = 0
+
+    # helper to locate pair object once
+    def _get_pair(idx: int):
+        return next((p for p in st.session_state.ground_pairs if p["idx"] == idx), None)
+
+    for pair_idx in selected_ids:
+        pair = _get_pair(pair_idx)
+        if pair is None:
+            continue
+
+        status.text(f"מנתח זוג {pair_idx} ...")
+        # --- simple pair-level prompt (reuse previous wording) ---
+        full_prompt = [
             {"role": "system", "content": [
-                {"type": "text", "text": "אתה עוזר בינה מלאכותית שמנתח שינויים באזור מוגדר בין שתי תמונות. דווח **רק** על שינויים מהותיים (הופעת/היעלמות אובייקטים, תזוזות גדולות, שינויי מבנה או קרקע) והתעלם משינויים זניחים כגון שינויים קלים בגוונים, תאורה, רעש מצלמה או תנועות עלים קטנות. או כתמים לא ברורים"}
+                {"type": "text",
+                 "text": "אתה עוזר בינה מלאכותית שמנתח הבדלים בין שתי תמונות ומדווח רק על שינויים מהותיים."}
             ]},
             {"role": "user", "content": [
-                {"type": "text", "text": f"אנא תאר אך ורק שינויים מהותיים באזור זה ({region_desc}) – כגון הופעת או היעלמות אובייקטים בולטים, תזוזות משמעותיות, או שינויי קרקע/מבנה ניכרים. התעלם משינויים מינוריים בגוונים, תאורה או תנועות עלים זעירות. עבור כל שינוי מהותי ציין אחוז ודאות (לדוגמה: ודאות: 90%). אם אין שינוי מהותי, כתוב במפורש: 'לא זוהו שינויים מהותיים'."},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r1_b64}"}},
+                {"type": "text", "text": custom_prompt},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{pair['b64_1']}"}},
                 {"type": "text", "text": "---"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{r2_b64}"}}
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{pair['b64_2']}"}},
             ]}
         ]
         resp, _ = _timed_gpt_call({
             "model": DEPLOYMENT,
-            "messages": region_prompt,
-            "max_tokens": 4096,
+            "messages": full_prompt,
+            "max_tokens": 1024,
             "temperature": 0,
-            "top_p": 0.95,
-            "frequency_penalty": 0,
-            "presence_penalty": 0,
-            "stop": None,
-            "stream": False
-        }, label=f"region {i} (pair {idx})")
-        if resp and hasattr(resp, "choices"):
-            txt = resp.choices[0].message.content
-            # Detect if GPT found a change
-            if ("אין שינויים" not in txt) and ("לא נמצאו שינויים" not in txt):
-                changed_tiles.append((region_desc, i-1))  # i-1 is the tile index
-                return f"<b>{region_desc}</b><br>{txt}"
-        return None
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        for ret in pool.map(_one_region, enumerate(regions, 1)):
-            if ret:
-                region_analyses.append(ret)
-    # Combine the analyses
-    if region_analyses:
-        # Summarize all tile changes for the pair
-        combined_analysis = (
-            "<b>שינויים שהתגלו באריחים:</b><br>" +
-            "<br><br>".join(region_analyses)
-        )
-    else:
-        combined_analysis = "לא זוהו שינויים מהותיים בזוג זה."
-    # Draw rectangles on the changed tiles
-    comp_img = _compose_pair_with_tile_boxes(pair["ref"], pair["aligned"], changed_tiles, grid_size=(int(st.session_state.get("grid_size", 3)), int(st.session_state.get("grid_size", 3))))
-    # Display the pair with marked tiles
-    st.image(comp_img, caption=f"זוג {idx} – אריחים עם שינוי מסומן באדום", use_container_width=True)
-    return idx, combined_analysis
+        }, label=f"pair #{pair_idx}")
+
+        txt = resp.choices[0].message.content if resp and hasattr(resp, 'choices') else "שגיאה בקבלת תוצאה."
+        # cache & render in analysis tab
+        md  = (f'<div dir="rtl" style="background:#f7f7f7;padding:8px;border-radius:8px">'
+               f'### תוצאה לזוג {pair_idx}<br><br>{txt}</div>')
+        st.session_state[f"gpt_txt_{pair_idx}"] = md
+        st.markdown(md, unsafe_allow_html=True)
+
+        # add entry to final report if GPT did find a change
+        if ("אין שינויים" not in txt) and ("לא נמצאו" not in txt):
+            # take the *first* top-k tile (already sorted) just for the marker
+            tiles = _extract_focused_regions(
+                pair["ref"],
+                pair["aligned"],
+                grid_size=(int(st.session_state.get("grid_size", 3)),
+                           int(st.session_state.get("grid_size", 3))),
+                top_k=1,
+                min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", MIN_SSIM_DIFF)),  # ← NEW
+                use_segmentation=False
+            )
+            box = tiles[0][3] if tiles else None   # (l,u,r,d) or None
+            comp_b64 = _compose_pair_b64_with_box(pair["ref"], pair["aligned"], box)
+            _add_report_entry(pair_idx, comp_b64, "", txt, box)
+
+        # progress
+        done += 1
+        progress.progress(done / total)
+
+    status.text("הניתוח הסתיים!")
+    progress.empty()
+# -----------------------------------------------------------
+
+# ...existing code...
