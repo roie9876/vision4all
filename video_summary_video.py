@@ -52,8 +52,7 @@ JPEG_QUALITY    = 95          # better quality for base64 encoding
 # Minimum structural‑difference (1‑SSIM) לסינון רעש
 MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lighting artefactss
 
-COMMON_HEBREW_PROMPT = (
-
+COMMON_HEBREW_PROMPT = """
 אתה מודל בינה מלאכותית להשוואה תמונות עם שינוי מהותי, השינוי צריך להופיע בתוך מסגרת אדומה.
 הגדרת שינוי מהותי:
 שינוי מהותי הוא הופעה, היעלמות או שינוי משמעותי במיקום של אובייקט בולט בזירה, בין אם מדובר באובייקט גדול או קטן, ובתנאי שהוא משפיע על התפיסה הכללית של הזירה. השוואה זו מתבצעת בין שתי תמונות תוך וידוא כי האובייקט או השינוי מתקיימים אך ורק באחת מהתמונות.
@@ -65,8 +64,9 @@ COMMON_HEBREW_PROMPT = (
 התייחסות לשינויים קלים: שינויים קטנים באור, צל, צבע, או תזוזות בלתי משמעותיות אינן נחשבות שינוי מהותי.
 תגובה מעודכנת:
 אם מתרחש שינוי מהותי לפי התהליך, תאר אותו בצורה ברורה ומפורטת תוך ציון אם מדובר בהופעה, היעלמות או שינוי מיקום.
+"""
 
-)
+
 
 SHARPNESS_THRESHOLD = 120.0     # NEW – default variance-of-Laplacian limit
 
@@ -853,7 +853,7 @@ def run_ground_change_detection():
             "MIN_SSIM_DIFF",
             0.0,
             1.0,
-            0.2
+            0.65
         )
         st.session_state["grid_size"] = st.number_input(
             "Grid size",
@@ -1460,8 +1460,10 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
 
             txt = resp.choices[0].message.content if resp and hasattr(resp, 'choices') else "שגיאה בקבלת תוצאה."
             # If GPT says no change, skip this tile
-            if ("אין שינויים" in txt) or ("לא נמצאו" in txt):
-                continue
+            if any(phrase in txt for phrase in ("אין שינויים",
+                                   "לא נמצאו",
+                                   "אין שינוי מהותי")):
+                    continue
 
             # Prepend tile location to GPT text
             txt_full = f"**{position_desc}** – {txt}"
