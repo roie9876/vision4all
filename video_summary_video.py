@@ -22,20 +22,69 @@ import numpy as np  # <-- NEW
 import re  # NEW – used for stripping ```json``` fences
 from skimage.metrics import structural_similarity as ssim  # NEW
 import torch, torchvision                                   # NEW
-
+import openai
 
 # source venv/bin/activate
 # Import your shared Azure OpenAI client
 from azure_openai_client import client, DEPLOYMENT
+# ---------- GPT provider helpers ----------
+def call_openai_com_with_retry(payload: dict, max_retries: int = 5, backoff: float = 2.0):
+    """
+    Send ChatCompletion to api.openai.com with retries.
+    Forces model='o3' and uses OPENAI_API_KEY from environment.
+    """
+    import copy, os, time, logging
+    import openai
+    try:                                # OpenAI‑Python < 1.0
+        from openai.error import OpenAIError
+    except ImportError:                 # OpenAI‑Python ≥ 1.0
+        from openai import OpenAIError
+
+    payload = copy.deepcopy(payload)
+    # Always use the `o3` model on api.openai.com
+    payload["model"] = "o3"
+    payload.pop("deployment_id", None)    # Azure-only key
+
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+
+    if not openai.api_key:
+        raise RuntimeError("OPENAI_API_KEY לא הוגדר או לא אותחל – בדוק את קובץ .env")
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            # --- OpenAI‑Python backwards compatibility ---
+            if hasattr(openai, "OpenAI"):          # new (≥1.0.0)
+                client = openai.OpenAI(api_key=openai.api_key)
+                return client.chat.completions.create(**payload)
+            else:                                  # old (<1.0.0)
+                return openai.ChatCompletion.create(**payload)
+        except OpenAIError as e:
+            logging.warning(f"OpenAI.com error: {e} (attempt {attempt}/{max_retries})")
+            time.sleep(backoff * attempt)
+    raise RuntimeError("Exceeded retries to api.openai.com")
+
+
+def call_gpt_with_retry(payload: dict):
+    """
+    Dispatch to Azure OpenAI or api.openai.com according to
+    st.session_state['api_provider'] (default 'Azure OpenAI').
+    """
+    provider = st.session_state.get("api_provider", "Azure OpenAI")
+    if provider == "OpenAI.com":
+        return call_openai_com_with_retry(payload)
+    else:
+        return call_azure_openai_with_retry(payload)
+# ------------------------------------------
 
 # Local imports
 from utils import (
     summarize_descriptions,
-    extract_frames,  # we still use for sub-video frames
-    call_azure_openai_with_retry  # <- import our new helper
+    extract_frames,             # we still use for sub‑video frames
+    call_azure_openai_with_retry  # Azure helper used by the dispatcher
 )
 
 load_dotenv()
+st.write("API key starts with:", os.getenv("OPENAI_API_KEY")[:10])
 
 retry_strategy = Retry(
     total=5,
@@ -173,7 +222,7 @@ def describe_image(image, content_prompt):
         }
     ]
     try:
-        completion = call_azure_openai_with_retry({
+        completion = call_gpt_with_retry({
             "model": DEPLOYMENT,
             "messages": chat_prompt,
             "max_tokens": 4096,
@@ -269,7 +318,7 @@ def summarize_image_analysis(image, description):
         }
     ]
     # Generate the completion
-    response = call_azure_openai_with_retry({
+    response = call_gpt_with_retry({
         "model": os.getenv("AZURE_OPENAI_DEPLOYMENT"),
         "messages": chat_prompt,
         "max_tokens": 800,
@@ -449,7 +498,7 @@ def batch_describe_images(images, content_prompt, batch_size=5):
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
                 })
-            future = executor.submit(call_azure_openai_with_retry, {
+            future = executor.submit(call_gpt_with_retry, {
                 "model": DEPLOYMENT,
                 "messages": chat_prompt,
                 "max_tokens": 4096,
@@ -784,7 +833,7 @@ def _run_ground_change_detection_legacy():
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_b64(aligned_crop)}"}}
                     ]}
                 ]
-                resp = call_azure_openai_with_retry({
+                resp = call_gpt_with_retry({
                     "model": DEPLOYMENT,
                     "messages": chat_prompt,
                     "max_tokens": 800,
@@ -922,6 +971,11 @@ def run_ground_change_detection():
     )
     # Add UI for the new parameters
     with st.expander("Advanced parameters"):
+        st.session_state["api_provider"] = st.radio(
+        "GPT API Provider",
+        ["Azure OpenAI", "OpenAI.com"],
+        index=0
+    )
         st.session_state["MIN_SSIM_DIFF"] = st.number_input(
             "MIN_SSIM_DIFF",
             0.0,
@@ -1333,12 +1387,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(me
 # ---------- NEW UTILITY ----------
 def _timed_gpt_call(payload: dict, label: str = ""):
     """
-    Wrapper around `call_azure_openai_with_retry` that measures the call
+    Wrapper around `call_gpt_with_retry` that measures the call
     duration and logs / prints it.
     """
     start = time.time()
     logging.info(f"↗️  GPT call started  {label}")
-    resp = call_azure_openai_with_retry(payload)
+    resp = call_gpt_with_retry(payload)
     elapsed = time.time() - start
     logging.info(f"✅ GPT call finished {label}  – {elapsed:.1f}s")
     st.write(f"⏱️ {label} took {elapsed:.1f}s")  # visible in Streamlit
