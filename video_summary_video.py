@@ -15,6 +15,7 @@ import concurrent.futures
 import cv2
 import shutil
 import numpy as np  # <-- NEW
+import re  # NEW – used for stripping ```json``` fences
 from skimage.metrics import structural_similarity as ssim  # NEW
 import torch, torchvision                                   # NEW
 
@@ -64,6 +65,40 @@ COMMON_HEBREW_PROMPT = """
 התייחסות לשינויים קלים: שינויים קטנים באור, צל, צבע, או תזוזות בלתי משמעותיות אינן נחשבות שינוי מהותי.
 תגובה מעודכנת:
 אם מתרחש שינוי מהותי לפי התהליך, תאר אותו בצורה ברורה ומפורטת תוך ציון אם מדובר בהופעה, היעלמות או שינוי מיקום.
+"""
+
+# ---------- NEW TILE-COMPARISON PROMPT (JSON) ----------
+TILE_COMPARE_PROMPT = """
+אתה עוזר AI שתפקידו לעזור לאנשים למצוא מידע.
+בהקשר זה, תתבקש להשוות בין שתי תמונות חלקיות (tile) של אותו אזור שצולם מרחפן, שבו מופיעים כביש, צמחייה וסלעים.
+עליך להשוות בין התמונות ולדווח אך ורק על שינויים מהותיים בין התמונות.
+
+הגדרת "שינוי מהותי":
+הופעה – אובייקט בולט שקיים בתמונה אחת בלבד.
+היעלמות – אובייקט בולט שנעלם בתמונה השנייה.
+שינוי מיקום משמעותי – אובייקט בולט שקיים בשתי התמונות אך זז בצורה ניכרת (≥ 25 % מגודל האובייקט או ≥ 50 px).
+
+*** התעלם מהבדלי תאורה, צללים, שינויים בצבע, רעש דיגיטלי ותזוזה טבעית קלה של עלים או עשב ***
+
+החזר תגובה בפורמט JSON (בעברית):
+{
+  "change_detected": true/false,
+  "description": "תיאור קצר של השינוי (אם קיים)",
+  "confidence": 0-100,
+  "criteria": {
+    "object_definition": "אובייקט בולט הוא אובייקט שגודלו לפחות 20% משטח התמונה",
+    "movement_threshold": "שינוי מיקום ייחשב משמעותי אם האובייקט זז ב-≥ 25 % מגודלו או ב-≥ 50 px",
+    "ignore_small_objects": true,
+    "ignore_insignificant_changes": "שינויים בתאורה, צללים, צבע, רעש דיגיטלי ותזוזה טבעית קלה של צמחייה אינם נחשבים מהותיים"
+  }
+}
+
+אם לא זוהה שינוי מהותי החזר:
+{
+  "change_detected": false,
+  "description": "",
+  "confidence": 0
+}
 """
 
 
@@ -1462,15 +1497,15 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
             tile_prompt = [
                 {"role": "system", "content": [
                     {"type": "text",
-                     "text": "אתה עוזר בינה מלאכותית שמנתח הבדלים בין שתי תמונות ומדווח רק על שינויים מהותיים."}
+                     "text": "אתה עוזר AI שתפקידו לעזור לאנשים למצוא מידע."}
                 ]},
                 {"role": "user", "content": [
-                    {"type": "text", "text": custom_prompt},
+                    {"type": "text", "text": TILE_COMPARE_PROMPT},
                     {"type": "image_url",
                      "image_url": {"url": f"data:image/jpeg;base64,{b64_r}"}},
                     {"type": "text", "text": "---"},
                     {"type": "image_url",
-                     "image_url": {"url": f"data:image/jpeg;base64,{b64_a}"}},
+                     "image_url": {"url": f"data:image/jpeg;base64,{b64_a}"}}
                 ]}
             ]
             # Call GPT for this tile
@@ -1481,15 +1516,25 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 "temperature": 0,
             }, label=f"pair {pair_idx} tile {t_idx}")
 
-            txt = resp.choices[0].message.content if resp and hasattr(resp, 'choices') else "שגיאה בקבלת תוצאה."
-            # If GPT says no change, skip this tile
-            if any(phrase in txt for phrase in ("אין שינויים",
-                                   "לא נמצאו",
-                                   "אין שינוי מהותי")):
-                    continue
+            import json
+            raw_txt = resp.choices[0].message.content if resp and hasattr(resp, "choices") else ""
+            stripped = raw_txt.strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```[a-zA-Z]*\n", "", stripped)
+                stripped = stripped.rstrip("`").strip()
 
-            # Prepend tile location to GPT text
-            txt_full = f"**{position_desc}** – {txt}"
+            try:
+                data = json.loads(stripped)
+            except Exception:
+                data = None
+
+            # Skip tile if no material change
+            if not data or not data.get("change_detected"):
+                continue
+
+            description = data.get("description", "").strip()
+            confidence = data.get("confidence", 0)
+            txt_full = f"**{position_desc}** – {description} (בטחון {confidence}%)"
             pair_changes_html.append(txt_full)
 
             # Visuals for report
