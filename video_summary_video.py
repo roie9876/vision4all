@@ -1028,7 +1028,7 @@ def run_ground_change_detection():
             "ORB max features",
             min_value=100,
             max_value=5000,
-            value=int(st.session_state.get("orb_max_features", 1000)),
+            value=int(st.session_state.get("orb_max_features", 4000)),
             step=100
         )
         st.session_state["lowe_ratio"] = st.slider(
