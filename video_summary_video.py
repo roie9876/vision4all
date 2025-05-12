@@ -523,13 +523,22 @@ def _extract_frames(video_path: str, fps_target: float):
     return frames
 
 # --- Alignment helper ---
-def _align_images(img_ref, img_to_align, max_features: int = 1000, good_match: int = 50):
+def _align_images(img_ref, img_to_align,
+                  max_features: int | None = None,
+                  lowe_ratio: float | None = None,
+                  good_match: int = 50):
     """
     Align `img_to_align` (PIL.Image) to `img_ref` (PIL.Image) using ORB feature matching
     and homography (RANSAC).
     Returns a tuple: (aligned PIL.Image, number_of_inliers).
     If alignment fails, the original `img_to_align` is returned with 0 inliers.
     """
+    import streamlit as st
+    # Pull dynamic defaults from the UI (Advanced parameters)
+    if max_features is None:
+        max_features = int(st.session_state.get("orb_max_features", 1000))
+    if lowe_ratio is None:
+        lowe_ratio = float(st.session_state.get("lowe_ratio", 0.7))
     import cv2
     import numpy as np
     from PIL import Image
@@ -548,7 +557,7 @@ def _align_images(img_ref, img_to_align, max_features: int = 1000, good_match: i
     good_matches = []
     for m, n in knn_matches:
         # Lowe ratio test - stricter threshold to get only very confident matches
-        if m.distance < 0.7 * n.distance:  # Stricter threshold (was 0.75)
+        if m.distance < lowe_ratio * n.distance:  # Stricter threshold (was 0.75)
             good_matches.append(m)
     # Require a minimum number of reliable matches
     if len(good_matches) < 10:
@@ -891,6 +900,20 @@ def run_ground_change_detection():
             step=0.05
         )
         # --- NEW UI parameters ---
+        st.session_state["orb_max_features"] = st.number_input(
+            "ORB max features",
+            min_value=100,
+            max_value=5000,
+            value=int(st.session_state.get("orb_max_features", 1000)),
+            step=100
+        )
+        st.session_state["lowe_ratio"] = st.slider(
+            "Lowe‑ratio threshold",
+            min_value=0.50,
+            max_value=0.95,
+            value=float(st.session_state.get("lowe_ratio", 0.70)),
+            step=0.05
+        )
         st.session_state["diff_mask_thr"] = st.number_input(
             "Diff‑mask threshold (% pixels changed)",
             min_value=0.5,
