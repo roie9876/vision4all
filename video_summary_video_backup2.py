@@ -676,10 +676,16 @@ def _run_ground_change_detection_legacy():
     with col2:
         after_file = st.file_uploader("טעינת סרטון 'אחרי'", type=["mp4", "avi", "mov", "mkv"], key="ground_after")
     fps_target = st.selectbox("קצב דגימת פריימים", [0.5, 1, 2], index=1)
-    custom_prompt = st.text_input(
+custom_prompt = st.text_input(
         "הנחיית תוכן (עברית)",
         value=ANALYSIS_PROMPT_HE
     )
+    # --- Override the global default prompt so *all* GPT calls
+    #     (including early frame filters) will use the prompt typed
+    #     in the UI during this run.
+    global ANALYSIS_PROMPT_HE
+    if custom_prompt:
+        ANALYSIS_PROMPT_HE = custom_prompt
     if st.button("ניתוח השינויים") and before_file and after_file:
         # Save temp videos
         temp_dir = tempfile.mkdtemp(prefix="ground_change_")
@@ -854,6 +860,12 @@ def run_ground_change_detection():
         "הנחיית תוכן (עברית)",
         value=ANALYSIS_PROMPT_HE
     )
+    # --- Override the global default prompt so *all* GPT calls
+    #     (including early frame filters) will use the prompt typed
+    #     in the UI during this run.
+    global ANALYSIS_PROMPT_HE
+    if custom_prompt:
+        ANALYSIS_PROMPT_HE = custom_prompt
     # Add UI for the new parameters
     with st.expander("Advanced parameters"):
         st.session_state["MIN_SSIM_DIFF"] = st.number_input(

@@ -41,8 +41,8 @@ def call_openai_com_with_retry(payload: dict, max_retries: int = 5, backoff: flo
         from openai import OpenAIError
 
     payload = copy.deepcopy(payload)
-    # Always use the `o3` model on api.openai.com
-    payload["model"] = "o3"
+    # Always use the `gpt-4o` model on api.openai.com
+    payload["model"] = "gpt-4o"
     payload.pop("deployment_id", None)    # Azure-only key
 
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -84,7 +84,7 @@ from utils import (
 )
 
 load_dotenv()
-st.write("API key starts with:", os.getenv("OPENAI_API_KEY")[:10])
+#st.write("API key starts with:", os.getenv("OPENAI_API_KEY")[:10])
 
 retry_strategy = Retry(
     total=5,
@@ -113,37 +113,32 @@ MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lig
 
 
 TILE_COMPARE_PROMPT = """
-🟢 **התעלם לחלוטין**  
-1. שינוי בצפיפות / זווית / צבע עשב או עשבוני.  
-2. שינוי גוון, תאורה, צל, רעש מצלמה.  
-3. ≤ 10 % פיקסלים שונים בכלל.  
+{"type": "text", "text": f"SSIM_diff≈{diff_val:.3f}"},
+🟢 התעלם משינויי תאורה, צבע, צל, רעש מצלמה ותנועות קלות בצמחייה.
 
-🔴 **שינוי מהותי** – חייב לעמוד באחד:  
-A. אובייקט קשיח (אבן, פסולת, ציוד, סימון כביש) הופיע/נעלם ומשתרע על ≥ 20 % משטח המסגרת.  
-B. אובייקט קשיח זז ≥ 60 px **או** ≥ 30 % מגודלו.  
+🔴 שינוי מהותי (דווח `change_detected=true`) -- אם ורק-אם מתקיים אחד:
+• הופעה או היעלמות של אובייקט בולט (≥ 20 % מהמסגרת).
+• אותו אובייקט זז ≥ 50 px או ≥ 25 % מגודלו.
+• רצועה/קו רציף (כביש, שול, תעלה, פס סימון, רצף צמחייה) שאורכו ≥ 50 % מהמסגרת וזז/השתנה בצורתו ≥ 30 px.
+• Patch חדש/נעלם – אזור בעל גוון/מרקם שונה (אדמה, סלע, אספלט)  
+  שגודלו ≥ 0.1 % מהמסגרת **או** כל שינוי ברור מירוק → חום/אפור/בז, גם אם < 0.1 %.  
+  לדוגמה, כתם סלע חום חדש בגודל 20×60‎ px חייב להיות 'change_detected=true'.
 
-החזר JSON **תקני בלבד** (ללא מלל נוסף), למשל:
 
-```json
+
+↩︎ החזר **רק** אובייקט JSON בעברית, בלי ``` ובלי טקסט נוסף, במבנה:
 {
-  "change_detected": true,
-  "reason": "אבן חדשה הופיעה",
+  "change_detected": true/false,
+  "reason": "תיאור קצר",
   "bbox_before": [x1, y1, x2, y2],
-  "bbox_after":  [x1p, y1p, x2p, y2p],
-  "movement_px": 72,
-  "changed_pixels_percent": 27,
-  "confidence": 96
+  "bbox_after":  [x1', y1', x2', y2'],
+  "movement_px": 0-999,
+  "changed_pixels_percent": 0-100,
+  "confidence": 0-100
 }
-{
-  "change_detected": false,
-  "reason": "",
-  "bbox_before": [],
-  "bbox_after": [],
-  "movement_px": 0,
-  "changed_pixels_percent": 0,
-  "confidence": 0
-}
+
 """
+
 
 
 # TILE_COMPARE_PROMPT = """
@@ -992,12 +987,12 @@ def run_ground_change_detection():
             "MIN_SSIM_DIFF",
             0.0,
             1.0,
-            0.65
+            0.40
         )
         st.session_state["grid_size"] = st.number_input(
             "Grid size",
             min_value=1,
-            value=5
+            value=3
         )
         st.session_state["top_k"] = st.number_input(
             "Top K",
@@ -1048,7 +1043,7 @@ def run_ground_change_detection():
             "Diff‑mask threshold (% pixels changed)",
             min_value=0.5,
             max_value=50.0,
-            value=40.0,
+            value=10.0,
             step=0.5,
             format="%.1f"
         )
@@ -1588,6 +1583,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
     def _get_pair(idx: int):
         return next((p for p in st.session_state.ground_pairs if p["idx"] == idx), None)
 
+    
     for pair_idx in selected_ids:
         pair = _get_pair(pair_idx)
         if pair is None:
@@ -1606,13 +1602,21 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         )
 
         pair_changes_html = []   # accumulate change texts for this pair
-
+       
         for t_idx, (b64_r, b64_a, position_desc, box) in enumerate(tiles, start=1):
-            # Build a GPT prompt for this single tile
-            tile_prompt = [
+                    # Build a GPT prompt for this single tile
+                    tile_prompt = [
+                        few_shot_example,
+                        {"role": "system","content": [
+                        {"type": "text",
+                        "text": "דוגמה: בשתי תמונות כמעט זהות אך בתמונה השנייה מופיע כתם חום קטן (15×40 px) על רקע ירוק. "
+                                "זוהי הופעה חדשה ולכן change_detected=true, reason='כתם אדמה חום הופיע', "
+                                "changed_pixels_percent≈0.2, confidence≈90."}
+                    ]
+                },
                 {"role": "system", "content": [
-                    {"type": "text",
-                     "text": "אתה עוזר AI שתפקידו לעזור לאנשים למצוא מידע."}
+                {"type": "text",
+                "text": "אתה מודל בינה-מלאכותית שתפקידו להשוות שתי תמונות ולזהות שינוי מהותי באזור המסומן באדום. החזר JSON תקני בלבד."}
                 ]},
                 {"role": "user", "content": [
                     {"type": "text", "text": TILE_COMPARE_PROMPT},
@@ -1643,18 +1647,20 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
             except Exception:
                 data = None
 
-            # Skip tile if no material change
-
             # Skip tile if no material change – אבל צריך קודם לבנות תיאור
-            
             if data:
-                description = data.get("description", "").strip()
+                # Prefer new 'reason' field; fall back to legacy 'description'
+                description = (data.get("reason") or data.get("description") or "").strip()
                 confidence  = data.get("confidence", 0)
+                moved_px    = data.get("movement_px", 0)
+                changed_pct = data.get("changed_pixels_percent", 0)
             else:
                 description = ""
                 confidence  = 0
-                # --- Debug output: tile + GPT text -----------------
-            txt_full = f"**{position_desc}** – {description} (בטחון {confidence}%)"
+                moved_px    = 0
+                changed_pct = 0
+            txt_full = (f"**{position_desc}** – {description or '—'} "
+                        f"(px {changed_pct}\u202F%, move {moved_px}px, conf {confidence}%)")
             if st.session_state.get("show_tile_debug", False):
                 tile_comp_b64 = _compose_b64_side_by_side(b64_r, b64_a)
                 st.image(
@@ -1662,10 +1668,12 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     caption=txt_full,
                     use_container_width=True
                 )
+            # -- filter tiny patches after debug so we can still view them --
+            # if changed_pct < 1:
+            #     continue
             if not data or not data.get("change_detected"):
                 continue
-    # ---------------------------------------------------
-            
+            # ---------------------------------------------------
             pair_changes_html.append(txt_full)
 
             # Visuals for report
