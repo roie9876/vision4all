@@ -1,5 +1,15 @@
 #temp#
 import streamlit as st
+# --- helper to support both old `st.experimental_rerun` and new `st.rerun` ---
+def _safe_rerun():
+    """
+    Call Streamlit's rerun function regardless of version:
+    • st.rerun (new)
+    • st.experimental_rerun (old)
+    """
+    func = getattr(st, "rerun", None) or getattr(st, "experimental_rerun", None)
+    if callable(func):
+        func()
 import tempfile
 import os
 import logging
@@ -1103,6 +1113,18 @@ def run_ground_change_detection():
         # -------- ANALYSIS TAB --------
         with tab_analysis:
             selected_ids = []
+                            # --- Select / Deselect all helpers ---
+            col_sel_all, col_clear_all = st.columns(2)
+            with col_sel_all:
+                if st.button("סמן את כל הזוגות", key="btn_select_all"):
+                    for p in st.session_state.ground_pairs:
+                        st.session_state[f"chk_pair_{p['idx']}"] = True
+                    _safe_rerun()  # refresh UI
+            with col_clear_all:
+                if st.button("נקה בחירה", key="btn_clear_all"):
+                    for p in st.session_state.ground_pairs:
+                        st.session_state[f"chk_pair_{p['idx']}"] = False
+                    _safe_rerun()
             for pair in st.session_state.ground_pairs:
                 idx = pair["idx"]
                 container = st.container()
