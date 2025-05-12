@@ -110,10 +110,9 @@ MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lig
 
 # ---------- NEW TILE-COMPARISON PROMPT (JSON) ----------
 
-
+#  שגודלו ≥ 0.1 % מהמסגרת **או** כל שינוי ברור מירוק → חום/אפור/בז, גם אם < 0.1 %.  
 
 TILE_COMPARE_PROMPT = """
-{"type": "text", "text": f"SSIM_diff≈{diff_val:.3f}"},
 🟢 התעלם משינויי תאורה, צבע, צל, רעש מצלמה ותנועות קלות בצמחייה.
 
 🔴 שינוי מהותי (דווח `change_detected=true`) -- אם ורק-אם מתקיים אחד:
@@ -121,7 +120,7 @@ TILE_COMPARE_PROMPT = """
 • אותו אובייקט זז ≥ 50 px או ≥ 25 % מגודלו.
 • רצועה/קו רציף (כביש, שול, תעלה, פס סימון, רצף צמחייה) שאורכו ≥ 50 % מהמסגרת וזז/השתנה בצורתו ≥ 30 px.
 • Patch חדש/נעלם – אזור בעל גוון/מרקם שונה (אדמה, סלע, אספלט)  
-  שגודלו ≥ 0.1 % מהמסגרת **או** כל שינוי ברור מירוק → חום/אפור/בז, גם אם < 0.1 %.  
+  שגודלו ≥ 0.1 % מהמסגרת **או** כל שינוי ברור %.  
   לדוגמה, כתם סלע חום חדש בגודל 20×60‎ px חייב להיות 'change_detected=true'.
 
 
@@ -992,7 +991,7 @@ def run_ground_change_detection():
         st.session_state["grid_size"] = st.number_input(
             "Grid size",
             min_value=1,
-            value=3
+            value=4
         )
         st.session_state["top_k"] = st.number_input(
             "Top K",
@@ -1605,28 +1604,41 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
        
         for t_idx, (b64_r, b64_a, position_desc, box) in enumerate(tiles, start=1):
                     # Build a GPT prompt for this single tile
-                    tile_prompt = [
-                        few_shot_example,
-                        {"role": "system","content": [
-                        {"type": "text",
-                        "text": "דוגמה: בשתי תמונות כמעט זהות אך בתמונה השנייה מופיע כתם חום קטן (15×40 px) על רקע ירוק. "
-                                "זוהי הופעה חדשה ולכן change_detected=true, reason='כתם אדמה חום הופיע', "
-                                "changed_pixels_percent≈0.2, confidence≈90."}
+            # Define a placeholder for few_shot_example
+            few_shot_example = {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "This is a placeholder example for few-shot learning."
+                    }
+                ]
+            }
+
+            tile_prompt = [
+                few_shot_example,  # Example for few-shot learning
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "אתה מודל בינה-מלאכותית שתפקידו להשוות שתי תמונות ולזהות שינוי מהותי באזור המסומן באדום. החזר JSON תקני בלבד."
+                        }
                     ]
                 },
-                {"role": "system", "content": [
-                {"type": "text",
-                "text": "אתה מודל בינה-מלאכותית שתפקידו להשוות שתי תמונות ולזהות שינוי מהותי באזור המסומן באדום. החזר JSON תקני בלבד."}
-                ]},
-                {"role": "user", "content": [
-                    {"type": "text", "text": TILE_COMPARE_PROMPT},
-                    {"type": "image_url",
-                     "image_url": {"url": f"data:image/jpeg;base64,{b64_r}"}},
-                    {"type": "text", "text": "---"},
-                    {"type": "image_url",
-                     "image_url": {"url": f"data:image/jpeg;base64,{b64_a}"}}
-                ]}
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": TILE_COMPARE_PROMPT},
+                        {"type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64_r}"}},
+                        {"type": "text", "text": "---"},
+                        {"type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64_a}"}}
+                    ]
+                }
             ]
+
             # Call GPT for this tile
             resp, _ = _timed_gpt_call({
                 "model": DEPLOYMENT,
