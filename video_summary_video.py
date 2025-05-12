@@ -113,26 +113,38 @@ MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lig
 
 
 TILE_COMPARE_PROMPT = """
-אתה עוזר AI שתפקידו לעזור לאנשים למצוא מידע.
-בהקשר זה, תתבקש להשוות בין שתי תמונות חלקיות (tile) של אותו אזור שצולם מרחפן, שבו מופיעים כביש, צמחייה וסלעים.
-עליך לבצע ניתוח מעמיק להשוואה בין התמונות ולדווח אך ורק על שינויים אשר מופעים בתוך המסגרת האדומה  בין התמונות.
+🟢 **התעלם לחלוטין**  
+1. שינוי בצפיפות / זווית / צבע עשב או עשבוני.  
+2. שינוי גוון, תאורה, צל, רעש מצלמה.  
+3. ≤ 10 % פיקסלים שונים בכלל.  
 
+🔴 **שינוי מהותי** – חייב לעמוד באחד:  
+A. אובייקט קשיח (אבן, פסולת, ציוד, סימון כביש) הופיע/נעלם ומשתרע על ≥ 20 % משטח המסגרת.  
+B. אובייקט קשיח זז ≥ 60 px **או** ≥ 30 % מגודלו.  
 
+החזר JSON **תקני בלבד** (ללא מלל נוסף), למשל:
 
-החזר תגובה בפורמט JSON (בעברית):
-{  
-  "change_detected": true/false,  
-  "description": "תיאור קצר של השינוי (אם קיים)",  
-  "confidence": 0-100,  
-  }  
-} 
-
-אם לא זוהה שינוי החזר:
+```json
+{
+  "change_detected": true,
+  "reason": "אבן חדשה הופיעה",
+  "bbox_before": [x1, y1, x2, y2],
+  "bbox_after":  [x1p, y1p, x2p, y2p],
+  "movement_px": 72,
+  "changed_pixels_percent": 27,
+  "confidence": 96
+}
 {
   "change_detected": false,
-  "description": "",
+  "reason": "",
+  "bbox_before": [],
+  "bbox_after": [],
+  "movement_px": 0,
+  "changed_pixels_percent": 0,
   "confidence": 0
 }
+"""
+
 
 # TILE_COMPARE_PROMPT = """
 # אתה עוזר AI שתפקידו לעזור לאנשים למצוא מידע.
@@ -1048,6 +1060,10 @@ def run_ground_change_detection():
         st.session_state["show_tile_stats"] = st.checkbox(
             "Show tile counts at each stage (debug)"
         )
+        st.session_state["show_tile_debug"] = st.checkbox(
+        "Show GPT tile debug (tile + analysis text)",
+        value=False
+)
     if st.button("הכן זוגות") and before_file is not None and after_file is not None:
         # clean old state
         for k in list(st.session_state.keys()):
@@ -1628,12 +1644,28 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 data = None
 
             # Skip tile if no material change
+
+            # Skip tile if no material change – אבל צריך קודם לבנות תיאור
+            
+            if data:
+                description = data.get("description", "").strip()
+                confidence  = data.get("confidence", 0)
+            else:
+                description = ""
+                confidence  = 0
+                # --- Debug output: tile + GPT text -----------------
+            txt_full = f"**{position_desc}** – {description} (בטחון {confidence}%)"
+            if st.session_state.get("show_tile_debug", False):
+                tile_comp_b64 = _compose_b64_side_by_side(b64_r, b64_a)
+                st.image(
+                    f"data:image/jpeg;base64,{tile_comp_b64}",
+                    caption=txt_full,
+                    use_container_width=True
+                )
             if not data or not data.get("change_detected"):
                 continue
-
-            description = data.get("description", "").strip()
-            confidence = data.get("confidence", 0)
-            txt_full = f"**{position_desc}** – {description} (בטחון {confidence}%)"
+    # ---------------------------------------------------
+            
             pair_changes_html.append(txt_full)
 
             # Visuals for report
@@ -1659,5 +1691,5 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
     status.text("הניתוח הסתיים!")
     progress.empty()
 # -----------------------------------------------------------
-
+#
 # ...existing code...
