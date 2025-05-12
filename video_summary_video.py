@@ -3,6 +3,10 @@ import streamlit as st
 import tempfile
 import os
 import logging
+# ---------- DEFAULT DEMO VIDEOS ----------
+DEFAULT_BEFORE_VIDEO = "לפני - גובה עשרים מטר.mp4"
+DEFAULT_AFTER_VIDEO  = "אחרי - גובה עשרים מטר.mp4"
+# -----------------------------------------
 import io
 import base64
 import requests
@@ -53,25 +57,13 @@ JPEG_QUALITY    = 95          # better quality for base64 encoding
 # Minimum structural‑difference (1‑SSIM) לסינון רעש
 MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lighting artefactss
 
-COMMON_HEBREW_PROMPT = """
-אתה מודל בינה מלאכותית להשוואה תמונות עם שינוי מהותי, השינוי צריך להופיע בתוך מסגרת אדומה.
-הגדרת שינוי מהותי:
-שינוי מהותי הוא הופעה, היעלמות או שינוי משמעותי במיקום של אובייקט בולט בזירה, בין אם מדובר באובייקט גדול או קטן, ובתנאי שהוא משפיע על התפיסה הכללית של הזירה. השוואה זו מתבצעת בין שתי תמונות תוך וידוא כי האובייקט או השינוי מתקיימים אך ורק באחת מהתמונות.
-תהליך בדיקה מעודכן:
-הופעה: בדוק האם אובייקט בולט קיים באחת התמונות ואינו קיים באחרת.
-היעלמות: בדוק האם אובייקט בולט נעלם מאחת התמונות ואינו מופיע באחרת.
-שינוי מיקום: בדוק האם אובייקט בולט זז באופן משמעותי ממיקומו בתמונות.
-אימות נוכחות: אם אובייקט זהה מופיע בשתי התמונות באותו מיקום או מיקום דומה, אין שינוי מהותי.
-התייחסות לשינויים קלים: שינויים קטנים באור, צל, צבע, או תזוזות בלתי משמעותיות אינן נחשבות שינוי מהותי.
-תגובה מעודכנת:
-אם מתרחש שינוי מהותי לפי התהליך, תאר אותו בצורה ברורה ומפורטת תוך ציון אם מדובר בהופעה, היעלמות או שינוי מיקום.
-"""
+
 
 # ---------- NEW TILE-COMPARISON PROMPT (JSON) ----------
 TILE_COMPARE_PROMPT = """
 אתה עוזר AI שתפקידו לעזור לאנשים למצוא מידע.
 בהקשר זה, תתבקש להשוות בין שתי תמונות חלקיות (tile) של אותו אזור שצולם מרחפן, שבו מופיעים כביש, צמחייה וסלעים.
-עליך להשוות בין התמונות ולדווח אך ורק על שינויים מהותיים בין התמונות.
+עליך להשוות בין התמונות ולדווח אך ורק על שינויים אשר מופעים בתוך המסגרת האדומה והם שינויים מהותיים בין התמונות.
 
 הגדרת "שינוי מהותי":
 הופעה – אובייקט בולט שקיים בתמונה אחת בלבד.
@@ -100,6 +92,8 @@ TILE_COMPARE_PROMPT = """
   "confidence": 0
 }
 """
+# Alias for backward compatibility
+COMMON_HEBREW_PROMPT = TILE_COMPARE_PROMPT
 
 
 
@@ -717,7 +711,7 @@ def _run_ground_change_detection_legacy():
     fps_target = st.selectbox("קצב דגימת פריימים", [0.5, 1, 2], index=1)
     custom_prompt = st.text_input(
         "הנחיית תוכן (עברית)",
-        value=COMMON_HEBREW_PROMPT
+        value=TILE_COMPARE_PROMPT
     )
     if st.button("ניתוח השינויים") and before_file and after_file:
         # Save temp videos
@@ -885,11 +879,21 @@ def run_ground_change_detection():
         after_file = st.file_uploader("טעינת סרטון 'אחרי'",
                                       type=["mp4", "avi", "mov", "mkv"],
                                       key="ground_after")
+
+    # --- fallback to local demo files if user did not upload ---
+    default_before_path = os.path.abspath(DEFAULT_BEFORE_VIDEO)
+    default_after_path  = os.path.abspath(DEFAULT_AFTER_VIDEO)
+    if before_file is None and os.path.exists(default_before_path):
+        before_file = open(default_before_path, "rb")
+    if after_file is None and os.path.exists(default_after_path):
+        after_file = open(default_after_path, "rb")
+    # -----------------------------------------------------------
     fps_target = st.selectbox("קצב דגימת פריימים", [0.5, 1, 2], index=1)
     # --- unified prompt input -------------------------------
-    custom_prompt = st.text_input(
+    custom_prompt = st.text_area(
         "הנחיית תוכן (עברית)",
-        value=COMMON_HEBREW_PROMPT
+        value=COMMON_HEBREW_PROMPT,
+        height=300
     )
     # Add UI for the new parameters
     with st.expander("Advanced parameters"):
@@ -965,17 +969,33 @@ def run_ground_change_detection():
         st.session_state["show_tile_stats"] = st.checkbox(
             "Show tile counts at each stage (debug)"
         )
-    if st.button("הכן זוגות") and before_file and after_file:
+    if st.button("הכן זוגות") and before_file is not None and after_file is not None:
         # clean old state
         for k in list(st.session_state.keys()):
             if k.startswith("chk_pair_"):
                 st.session_state.pop(k)
         # save videos to temp dir
         tmp = tempfile.mkdtemp(prefix="ground_change_")
-        path_before = os.path.join(tmp, before_file.name)
-        path_after  = os.path.join(tmp,  after_file.name)
-        with open(path_before, "wb") as f: f.write(before_file.getbuffer())
-        with open(path_after,  "wb") as f: f.write(after_file.getbuffer())
+
+        # Determine filenames, stripping any absolute path for local fallback objects
+        before_filename = os.path.basename(getattr(before_file, "name", DEFAULT_BEFORE_VIDEO))
+        after_filename  = os.path.basename(getattr(after_file,  "name", DEFAULT_AFTER_VIDEO))
+        path_before = os.path.join(tmp, before_filename)
+        path_after  = os.path.join(tmp,  after_filename)
+
+        # If the file was uploaded through Streamlit it has getbuffer(); if it's a local file-handle we copy it.
+        if hasattr(before_file, "getbuffer"):
+            with open(path_before, "wb") as f:
+                f.write(before_file.getbuffer())
+        else:  # local fallback
+            shutil.copyfile(default_before_path, path_before)
+
+        if hasattr(after_file, "getbuffer"):
+            with open(path_after, "wb") as f:
+                f.write(after_file.getbuffer())
+        else:
+            shutil.copyfile(default_after_path, path_after)
+
         # store paths so we can replay video segments later
         st.session_state.path_before = path_before
         st.session_state.path_after  = path_after
@@ -1214,7 +1234,7 @@ def _extract_focused_regions(img_ref, img_aligned,
         import io, base64
         img = Image.open(io.BytesIO(base64.b64decode(b64_img))).convert("RGB")
         draw = ImageDraw.Draw(img)
-        draw.rectangle([0, 0, img.width - 1, img.height - 1], outline="red", width=3)
+        draw.rectangle([0, 0, img.width - 1, img.height - 1], outline="red", width=1)
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=85)
         return base64.b64encode(buf.getvalue()).decode()
