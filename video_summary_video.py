@@ -32,6 +32,17 @@ import numpy as np  # <-- NEW
 import re  # NEW – used for stripping ```json``` fences
 from skimage.metrics import structural_similarity as ssim  # NEW
 import torch, torchvision                                   # NEW
+
+# ---------- Deterministic behaviour ----------
+import random as _rnd
+from threading import Lock
+
+torch.manual_seed(42)
+np.random.seed(42)
+_rnd.seed(42)
+torch.use_deterministic_algorithms(True, warn_only=True)
+_PAIR_LOCK = Lock()
+# --------------------------------------------
 import openai
 
 # source venv/bin/activate
@@ -843,6 +854,9 @@ def _is_stable_change(idx, r, c, cube, th=MIN_SSIM_DIFF, win: int = 1):
     exceeds the threshold in at least one neighbouring pair within ±`win` frames.
     Filters out momentary artefacts (e.g. leaves swaying in just one frame).
     """
+    # --- BYPASS when no temporal filtering requested ---
+    if win == 0 or cube.shape[0] <= 1:
+        return True
     if cube[idx, r, c] < th:
         return False
     lo = max(0, idx - win)
@@ -1438,6 +1452,9 @@ def _get_maskrcnn_model():
         _MASKRCNN_MODEL.eval()
     return _MASKRCNN_MODEL
 
+# ---------- thread‑safety lock for Mask‑RCNN inference ----------
+_MASK_LOCK = Lock()
+
 def _maskrcnn_new_objects(img_before, img_after,
                           score_thr: float = 0.50,
                           iou_thr: float = 0.30):
@@ -1448,9 +1465,11 @@ def _maskrcnn_new_objects(img_before, img_after,
     import torchvision.ops as ops
     from torchvision.transforms.functional import to_tensor
     model = _get_maskrcnn_model()
-    with torch.no_grad():
-        pred_b = model([to_tensor(img_before)])[0]
-        pred_a = model([to_tensor(img_after)])[0]
+    # Guard inference with the global lock for thread safety
+    with _MASK_LOCK:              # 🔒 thread‑safe
+        with torch.no_grad():
+            pred_b = model([to_tensor(img_before)])[0]
+            pred_a = model([to_tensor(img_after)])[0]
 
     # keep high-score detections
     keep_b = pred_b["scores"] >= score_thr
@@ -1588,6 +1607,9 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
     import concurrent.futures
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    # Ensure Mask‑RCNN is fully loaded once in the UI thread
+    _get_maskrcnn_model()
+
     progress = st.progress(0.0)
     status   = st.empty()
     total    = len(selected_ids)
@@ -1606,27 +1628,26 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         st.session_state.get("show_tile_debug")
     ])
 
+    # --- build task list once, independent of debug flags ---
     tasks = []
     for idx in selected_ids:
         pair = _get_pair(idx)
         if not pair:
             continue
-        if debug_tiles_requested:
-            # extract & RENDER tiles in UI thread so st.image works
-            st.session_state.current_pair_idx = idx  # needed by _is_stable_change
-            tiles = _extract_focused_regions(
-                pair["ref"],
-                pair["aligned"],
-                grid_size=(
-                    int(st.session_state.get("grid_size", 3)),
-                    int(st.session_state.get("grid_size", 3))
-                ),
-                top_k=int(st.session_state.get("top_k", 30)),
-                min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
-                use_segmentation=bool(st.session_state.get("use_segmentation", True))
-            )
-        else:
-            tiles = None  # let the worker compute quietly
+        # Extract tiles in the UI thread so the list is identical
+        # regardless of debug check‑boxes
+        st.session_state.current_pair_idx = idx
+        tiles = _extract_focused_regions(
+            pair["ref"],
+            pair["aligned"],
+            grid_size=(
+                int(st.session_state.get("grid_size", 3)),
+                int(st.session_state.get("grid_size", 3))
+            ),
+            top_k=int(st.session_state.get("top_k", 30)),
+            min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
+            use_segmentation=bool(st.session_state.get("use_segmentation", True))
+        )
         tasks.append((idx, pair, tiles))
 
     # --- run tasks in parallel across pairs ---
@@ -1636,29 +1657,15 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         Returns a list of (txt_full, comp_b64, tile_b64, box) for changed tiles.
         """
         import threading, time, logging
+        import concurrent.futures
+        import json
         thread_name = threading.current_thread().name
-        # --- extract & filter tiles INSIDE the thread unless provided ---
-        if tiles is None:
-            # make the Stable‑change filter know מי הזוג הנוכחי
-            st.session_state.current_pair_idx = pair_idx
-
-            tiles = _extract_focused_regions(
-                pair["ref"],
-                pair["aligned"],
-                grid_size=(
-                    int(st.session_state.get("grid_size", 3)),
-                    int(st.session_state.get("grid_size", 3))
-                ),
-                top_k=int(st.session_state.get("top_k", 30)),
-                min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
-                use_segmentation=bool(st.session_state.get("use_segmentation", True))
-            )
         logging.info(f"[{thread_name}]  Pair {pair_idx}: {len(tiles)} tiles ready")
         t_start = time.time()
-        import json, logging  # local import; safe inside threads
         results = []
-        for t_idx, (b64_r, b64_a, position_desc, box) in enumerate(tiles, start=1):
-            # Build a GPT prompt for this single tile
+        # --- run GPT calls for all tiles concurrently ---
+        def _gpt_for_tile(args):
+            t_idx, b64_r, b64_a, position_desc, box = args
             few_shot_example = {
                 "role": "system",
                 "content": [
@@ -1669,7 +1676,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 ]
             }
             tile_prompt = [
-                few_shot_example,  # Example for few-shot learning
+                few_shot_example,
                 {
                     "role": "system",
                     "content": [
@@ -1684,14 +1691,13 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     "content": [
                         {"type": "text", "text": custom_prompt},
                         {"type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64_r}"}},
+                         "image_url": {"url": f"data:image/jpeg;base64,{b64_r}"}},
                         {"type": "text", "text": "---"},
                         {"type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64_a}"}}
+                         "image_url": {"url": f"data:image/jpeg;base64,{b64_a}"}}
                     ]
                 }
             ]
-            # Call GPT for this tile (NO Streamlit here)
             try:
                 resp = call_gpt_with_retry({
                     "model": DEPLOYMENT,
@@ -1701,39 +1707,48 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 })
             except Exception as e:
                 logging.warning(f"GPT call exception for pair {pair_idx} tile {t_idx}: {e}")
-                continue
-            if resp is None:
-                logging.warning(f"GPT call failed for pair {pair_idx} tile {t_idx}")
-                continue
+                return None
+
             raw_txt = resp.choices[0].message.content if resp and hasattr(resp, "choices") else ""
             stripped = raw_txt.strip()
             if stripped.startswith("```"):
                 stripped = re.sub(r"^```[a-zA-Z]*\n", "", stripped)
                 stripped = stripped.rstrip("`").strip()
-            try:
-                data = json.loads(stripped)
-            except Exception:
-                data = None
-            # Skip tile if no material change – אבל צריך קודם לבנות תיאור
-            if data:
-                # Prefer new 'reason' field; fall back to legacy 'description'
-                description = (data.get("reason") or data.get("description") or "").strip()
-                confidence  = data.get("confidence", 0)
-                moved_px    = data.get("movement_px", 0)
-                changed_pct = data.get("changed_pixels_percent", 0)
-            else:
-                description = ""
-                confidence  = 0
-                moved_px    = 0
-                changed_pct = 0
-            txt_full = (f"**{position_desc}** – {description or '—'} "
-                        f"(px {changed_pct}\u202F%, move {moved_px}px, conf {confidence}%)")
-            # No Streamlit calls here; return all info for UI thread to render
-            if not data or not data.get("change_detected"):
-                continue
-            comp_b64  = _compose_pair_b64_with_box(pair["ref"], pair["aligned"], box)
-            tile_b64  = _compose_b64_side_by_side(b64_r, b64_a)
-            results.append((txt_full, comp_b64, tile_b64, box))
+            logging.info(f"[{thread_name}] GPT raw pair {pair_idx} tile {t_idx}: {stripped}")
+            return t_idx, stripped, position_desc, b64_r, b64_a, box
+
+        max_tile_workers = min(4, len(tiles))  # limit to 4 concurrent calls
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_tile_workers) as tile_executor:
+            fut_to_args = {
+                tile_executor.submit(_gpt_for_tile, (idx, *tile)): tile
+                for idx, tile in enumerate(tiles, start=1)
+            }
+            for fut in concurrent.futures.as_completed(fut_to_args):
+                res = fut.result()
+                if res is None:
+                    continue
+                t_idx, stripped, position_desc, b64_r, b64_a, box = res
+                try:
+                    data = json.loads(stripped)
+                except Exception:
+                    data = None
+                if data:
+                    description = (data.get("reason") or data.get("description") or "").strip()
+                    confidence  = data.get("confidence", 0)
+                    moved_px    = data.get("movement_px", 0)
+                    changed_pct = data.get("changed_pixels_percent", 0)
+                else:
+                    description = ""
+                    confidence  = 0
+                    moved_px    = 0
+                    changed_pct = 0
+                txt_full = (f"**{position_desc}** – {description or '—'} "
+                            f"(px {changed_pct}\u202F%, move {moved_px}px, conf {confidence}%)")
+                if not data or not data.get("change_detected"):
+                    continue
+                comp_b64  = _compose_pair_b64_with_box(pair["ref"], pair["aligned"], box)
+                tile_b64  = _compose_b64_side_by_side(b64_r, b64_a)
+                results.append((txt_full, comp_b64, tile_b64, box))
         elapsed = time.time() - t_start
         logging.info(f"[{thread_name}] ✅ Pair {pair_idx} finished – "
                      f"{len(results)} changes, {elapsed:.1f}s")
