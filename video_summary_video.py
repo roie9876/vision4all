@@ -1615,9 +1615,12 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
             # extract & RENDER tiles in UI thread so st.image works
             st.session_state.current_pair_idx = idx  # needed by _is_stable_change
             tiles = _extract_focused_regions(
-                pair["ref"], pair["aligned"],
-                grid_size=(int(st.session_state.get("grid_size", 3)),
-                           int(st.session_state.get("grid_size", 3))),
+                pair["ref"],
+                pair["aligned"],
+                grid_size=(
+                    int(st.session_state.get("grid_size", 3)),
+                    int(st.session_state.get("grid_size", 3))
+                ),
                 top_k=int(st.session_state.get("top_k", 30)),
                 min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
                 use_segmentation=bool(st.session_state.get("use_segmentation", True))
@@ -1636,10 +1639,16 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         thread_name = threading.current_thread().name
         # --- extract & filter tiles INSIDE the thread unless provided ---
         if tiles is None:
+            # make the Stable‑change filter know מי הזוג הנוכחי
+            st.session_state.current_pair_idx = pair_idx
+
             tiles = _extract_focused_regions(
-                pair["ref"], pair["aligned"],
-                grid_size=(int(st.session_state.get("grid_size", 3)),
-                           int(st.session_state.get("grid_size", 3))),
+                pair["ref"],
+                pair["aligned"],
+                grid_size=(
+                    int(st.session_state.get("grid_size", 3)),
+                    int(st.session_state.get("grid_size", 3))
+                ),
                 top_k=int(st.session_state.get("top_k", 30)),
                 min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
                 use_segmentation=bool(st.session_state.get("use_segmentation", True))
