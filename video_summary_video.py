@@ -1,4 +1,4 @@
-#temp#
+#working ver#
 import streamlit as st
 # --- helper to support both old `st.experimental_rerun` and new `st.rerun` ---
 def _safe_rerun():
@@ -149,42 +149,7 @@ TILE_COMPARE_PROMPT = """
 """
 
 
-
-# TILE_COMPARE_PROMPT = """
-# אתה עוזר AI שתפקידו לעזור לאנשים למצוא מידע.
-# בהקשר זה, תתבקש להשוות בין שתי תמונות חלקיות (tile) של אותו אזור שצולם מרחפן, שבו מופיעים כביש, צמחייה וסלעים.
-# עליך להשוות בין התמונות ולדווח אך ורק על שינויים אשר מופעים בתוך המסגרת האדומה והם שינויים מהותיים בין התמונות.
-
-# הגדרת "שינוי מהותי":
-# הופעה – אובייקט בולט שקיים בתמונה אחת בלבד.
-# היעלמות – אובייקט בולט שנעלם בתמונה השנייה.
-# שינוי מיקום משמעותי – אובייקט בולט שקיים בשתי התמונות אך זז בצורה ניכרת (≥ 25 % מגודל האובייקט או ≥ 50 px).
-
-# *** התעלם מהבדלי תאורה, צללים, שינויים בצבע, רעש דיגיטלי ותזוזה טבעית קלה של עלים או עשב ***
-
-# החזר תגובה בפורמט JSON (בעברית):
-# {
-#   "change_detected": true/false,
-#   "description": "תיאור קצר של השינוי (אם קיים)",
-#   "confidence": 0-100,
-#   "criteria": {
-#     "object_definition": "אובייקט בולט הוא אובייקט שגודלו לפחות 20% משטח התמונה",
-#     "movement_threshold": "שינוי מיקום ייחשב משמעותי אם האובייקט זז ב-≥ 25 % מגודלו או ב-≥ 50 px",
-#     "ignore_small_objects": true,
-#     "ignore_insignificant_changes": "שינויים בתאורה, צללים, צבע, רעש דיגיטלי ותזוזה טבעית קלה של צמחייה אינם נחשבים מהותיים"
-#   }
-# }
-
-# אם לא זוהה שינוי מהותי החזר:
-# {
-#   "change_detected": false,
-#   "description": "",
-#   "confidence": 0
-# }
-# """
-# Alias for backward compatibility
 COMMON_HEBREW_PROMPT = TILE_COMPARE_PROMPT
-
 
 
 SHARPNESS_THRESHOLD = 120.0     # NEW – default variance-of-Laplacian limit
@@ -1112,9 +1077,13 @@ def run_ground_change_detection():
 
         # -------- ANALYSIS TAB --------
         with tab_analysis:
-            selected_ids = []
-                            # --- Select / Deselect all helpers ---
-            col_sel_all, col_clear_all = st.columns(2)
+            # gather currently‑checked pairs (before we render the buttons)
+            selected_ids = [
+                p["idx"] for p in st.session_state.ground_pairs
+                if st.session_state.get(f"chk_pair_{p['idx']}", False)
+            ]
+            # --- Select / Deselect all helpers ---
+            col_sel_all, col_clear_all, col_run = st.columns(3)
             with col_sel_all:
                 if st.button("סמן את כל הזוגות", key="btn_select_all"):
                     for p in st.session_state.ground_pairs:
@@ -1125,6 +1094,9 @@ def run_ground_change_detection():
                     for p in st.session_state.ground_pairs:
                         st.session_state[f"chk_pair_{p['idx']}"] = False
                     _safe_rerun()
+            with col_run:
+                if st.button("נתח זוגות", key="btn_run_selected", type="primary") and selected_ids:
+                    _run_pairs_analysis(selected_ids, custom_prompt)
             for pair in st.session_state.ground_pairs:
                 idx = pair["idx"]
                 container = st.container()
@@ -1142,10 +1114,6 @@ def run_ground_change_detection():
                     st.markdown(st.session_state.get(txt_key, ""),
                                 unsafe_allow_html=True)
 
-            # run GPT analysis on the chosen pairs
-            if st.button("Analyze selected pairs") and selected_ids:
-                _run_pairs_analysis(selected_ids, custom_prompt)  # ← existing helper
-
         # -------- FINAL-REPORT TAB --------
         with tab_report:
             report = st.session_state.get("report_data", [])
@@ -1153,7 +1121,15 @@ def run_ground_change_detection():
                 st.write("אין ממצאים להצגה עדיין.")
             else:
                 total_changes = len(report)
-                st.markdown(f"### בדוח זה התגלו **{total_changes}** שינויים בסך הכל")
+                import time
+                run_ts  = st.session_state.get("report_start_ts", "—")
+                runtime = st.session_state.get("report_runtime", 0.0)
+                elapsed = time.strftime("%H:%M:%S", time.gmtime(runtime)) if runtime else "—"
+                st.markdown(
+                    f"**תאריך הרצה:** {run_ts} &nbsp;&nbsp; "
+                    f"**משך:** {elapsed} &nbsp;&nbsp; "
+                    f"**סה\"כ שינויים:** **{total_changes}**"
+                )
                 for entry in report:
                     st.image(f"data:image/jpeg;base64,{entry['pair_b64']}",
                              caption=f"זוג {entry['pair_idx']}",
@@ -1318,7 +1294,9 @@ def _extract_focused_regions(img_ref, img_aligned,
             ref_draw, aln_draw = ref_tile.copy(), aln_tile.copy()
             d1, d2 = ImageDraw.Draw(ref_draw), ImageDraw.Draw(aln_draw)
             for x1, y1, x2, y2 in boxes:
+                # draw on reference tile
                 d1.rectangle([x1, y1, x2, y2], outline="red", width=3)
+                # draw on aligned tile (same local coords, no offset needed)
                 d2.rectangle([x1, y1, x2, y2], outline="red", width=3)
             filtered.append((img_to_b64(ref_draw),
                              img_to_b64(aln_draw),
@@ -1415,7 +1393,11 @@ def _compose_b64_side_by_side(b64_left:str, b64_right:str) -> str:
 # ...existing imports...
 import time      # NEW
 # ...existing code...
-logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)s  %(message)s",
+    force=True      # ensure our config overrides default Streamlit handler
+)
 # ---------------------------------------------------------
 
 # ---------- NEW UTILITY ----------
@@ -1597,6 +1579,12 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
     if not selected_ids:
         return
 
+    # --- timing metadata ------------------------------------------------
+    import datetime, time
+    import logging
+    start_time = time.time()
+    st.session_state["report_start_ts"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     import concurrent.futures
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1609,26 +1597,56 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
     def _get_pair(idx: int):
         return next((p for p in st.session_state.ground_pairs if p["idx"] == idx), None)
 
-    # --- prepare tasks (build list of (pair_idx, pair)) ---
-    tasks = [(idx, _get_pair(idx)) for idx in selected_ids if _get_pair(idx)]
+    # --- decide whether we need Streamlit debug output (UI thread) ----
+    debug_tiles_requested = any([
+        st.session_state.get("show_before_tiles"),
+        st.session_state.get("show_pre_tiles"),
+        st.session_state.get("show_post_tiles"),
+        st.session_state.get("show_diff_tiles"),
+        st.session_state.get("show_tile_debug")
+    ])
+
+    tasks = []
+    for idx in selected_ids:
+        pair = _get_pair(idx)
+        if not pair:
+            continue
+        if debug_tiles_requested:
+            # extract & RENDER tiles in UI thread so st.image works
+            st.session_state.current_pair_idx = idx  # needed by _is_stable_change
+            tiles = _extract_focused_regions(
+                pair["ref"], pair["aligned"],
+                grid_size=(int(st.session_state.get("grid_size", 3)),
+                           int(st.session_state.get("grid_size", 3))),
+                top_k=int(st.session_state.get("top_k", 30)),
+                min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
+                use_segmentation=bool(st.session_state.get("use_segmentation", True))
+            )
+        else:
+            tiles = None  # let the worker compute quietly
+        tasks.append((idx, pair, tiles))
 
     # --- run tasks in parallel across pairs ---
-    def _process_single_pair(pair_idx, pair):
+    def _process_single_pair(pair_idx, pair, tiles=None):
         """
         Analyze all tiles for a single pair (NO Streamlit calls here).
         Returns a list of (txt_full, comp_b64, tile_b64, box) for changed tiles.
         """
+        import threading, time, logging
+        thread_name = threading.current_thread().name
+        # --- extract & filter tiles INSIDE the thread unless provided ---
+        if tiles is None:
+            tiles = _extract_focused_regions(
+                pair["ref"], pair["aligned"],
+                grid_size=(int(st.session_state.get("grid_size", 3)),
+                           int(st.session_state.get("grid_size", 3))),
+                top_k=int(st.session_state.get("top_k", 30)),
+                min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
+                use_segmentation=bool(st.session_state.get("use_segmentation", True))
+            )
+        logging.info(f"[{thread_name}]  Pair {pair_idx}: {len(tiles)} tiles ready")
+        t_start = time.time()
         import json, logging  # local import; safe inside threads
-        # heavy: extract tiles inside the thread
-        tiles = _extract_focused_regions(
-            pair["ref"],
-            pair["aligned"],
-            grid_size=(int(st.session_state.get("grid_size", 3)),
-                       int(st.session_state.get("grid_size", 3))),
-            top_k=int(st.session_state.get("top_k", 30)),
-            min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
-            use_segmentation=bool(st.session_state.get("use_segmentation", True))
-        )
         results = []
         for t_idx, (b64_r, b64_a, position_desc, box) in enumerate(tiles, start=1):
             # Build a GPT prompt for this single tile
@@ -1655,7 +1673,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": TILE_COMPARE_PROMPT},
+                        {"type": "text", "text": custom_prompt},
                         {"type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{b64_r}"}},
                         {"type": "text", "text": "---"},
@@ -1707,24 +1725,35 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
             comp_b64  = _compose_pair_b64_with_box(pair["ref"], pair["aligned"], box)
             tile_b64  = _compose_b64_side_by_side(b64_r, b64_a)
             results.append((txt_full, comp_b64, tile_b64, box))
+        elapsed = time.time() - t_start
+        logging.info(f"[{thread_name}] ✅ Pair {pair_idx} finished – "
+                     f"{len(results)} changes, {elapsed:.1f}s")
         return results
 
     results = []
     max_workers = min(4, len(tasks)) if tasks else 1
+    logging.info(f"Submitting {len(tasks)} pairs to ThreadPoolExecutor "
+                 f"(max_workers={max_workers})"
+                 f"– debug flags: pre={st.session_state.get('show_pre_tiles')}, "
+                 f"post={st.session_state.get('show_post_tiles')}, "
+                 f"diff={st.session_state.get('show_diff_tiles')}, "
+                 f"gpt_tile={st.session_state.get('show_tile_debug')}")
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
-            executor.submit(_process_single_pair, pid, pobj): pid
-            for pid, pobj in tasks
+            executor.submit(_process_single_pair, pid, pobj, tl): pid
+            for pid, pobj, tl in tasks
         }
         for fut in as_completed(future_to_idx):
             pid = future_to_idx[fut]
             try:
                 res = fut.result()
                 results.append((pid, res))  # (pair_idx, list_of_results)
+                logging.info(f"↩️  Pair {pid} collected – {len(res)} changes")
             except Exception as exc:
                 logging.warning(f"Pair {pid} generated an exception: {exc}")
             done += 1
             progress.progress(done / total)
+            logging.info(f"Progress: {done}/{total} pairs finished")
 
     # --- render results in UI thread (keep order) ---
     for pair_idx, pair_results in sorted(results, key=lambda x: x[0]):
@@ -1751,6 +1780,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
 
     status.text("הניתוח הסתיים!")
     progress.empty()
+    st.session_state["report_runtime"] = time.time() - start_time   # ← store runtime
 # -----------------------------------------------------------
 #
 # ...existing code...
