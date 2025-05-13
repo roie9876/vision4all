@@ -1152,6 +1152,8 @@ def run_ground_change_detection():
             if not report:
                 st.write("אין ממצאים להצגה עדיין.")
             else:
+                total_changes = len(report)
+                st.markdown(f"### בדוח זה התגלו **{total_changes}** שינויים בסך הכל")
                 for entry in report:
                     st.image(f"data:image/jpeg;base64,{entry['pair_b64']}",
                              caption=f"זוג {entry['pair_idx']}",
@@ -1595,6 +1597,9 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
     if not selected_ids:
         return
 
+    import concurrent.futures
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     progress = st.progress(0.0)
     status   = st.empty()
     total    = len(selected_ids)
@@ -1604,29 +1609,29 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
     def _get_pair(idx: int):
         return next((p for p in st.session_state.ground_pairs if p["idx"] == idx), None)
 
-    
-    for pair_idx in selected_ids:
-        pair = _get_pair(pair_idx)
-        if pair is None:
-            continue
+    # --- prepare tasks (build list of (pair_idx, pair)) ---
+    tasks = [(idx, _get_pair(idx)) for idx in selected_ids if _get_pair(idx)]
 
-        status.text(f"מנתח זוג {pair_idx} ...")
-        # --- analyse only the tiles that survived all filters ---
+    # --- run tasks in parallel across pairs ---
+    def _process_single_pair(pair_idx, pair):
+        """
+        Analyze all tiles for a single pair (NO Streamlit calls here).
+        Returns a list of (txt_full, comp_b64, tile_b64, box) for changed tiles.
+        """
+        import json, logging  # local import; safe inside threads
+        # heavy: extract tiles inside the thread
         tiles = _extract_focused_regions(
             pair["ref"],
             pair["aligned"],
             grid_size=(int(st.session_state.get("grid_size", 3)),
                        int(st.session_state.get("grid_size", 3))),
             top_k=int(st.session_state.get("top_k", 30)),
-            min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", MIN_SSIM_DIFF)),
+            min_ssim_diff=float(st.session_state.get("MIN_SSIM_DIFF", 0.7)),
             use_segmentation=bool(st.session_state.get("use_segmentation", True))
         )
-
-        pair_changes_html = []   # accumulate change texts for this pair
-       
+        results = []
         for t_idx, (b64_r, b64_a, position_desc, box) in enumerate(tiles, start=1):
-                    # Build a GPT prompt for this single tile
-            # Define a placeholder for few_shot_example
+            # Build a GPT prompt for this single tile
             few_shot_example = {
                 "role": "system",
                 "content": [
@@ -1636,7 +1641,6 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     }
                 ]
             }
-
             tile_prompt = [
                 few_shot_example,  # Example for few-shot learning
                 {
@@ -1660,27 +1664,29 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     ]
                 }
             ]
-
-            # Call GPT for this tile
-            resp, _ = _timed_gpt_call({
-                "model": DEPLOYMENT,
-                "messages": tile_prompt,
-                "max_tokens": 1024,
-                "temperature": 0,
-            }, label=f"pair {pair_idx} tile {t_idx}")
-
-            import json
+            # Call GPT for this tile (NO Streamlit here)
+            try:
+                resp = call_gpt_with_retry({
+                    "model": DEPLOYMENT,
+                    "messages": tile_prompt,
+                    "max_tokens": 1024,
+                    "temperature": 0,
+                })
+            except Exception as e:
+                logging.warning(f"GPT call exception for pair {pair_idx} tile {t_idx}: {e}")
+                continue
+            if resp is None:
+                logging.warning(f"GPT call failed for pair {pair_idx} tile {t_idx}")
+                continue
             raw_txt = resp.choices[0].message.content if resp and hasattr(resp, "choices") else ""
             stripped = raw_txt.strip()
             if stripped.startswith("```"):
                 stripped = re.sub(r"^```[a-zA-Z]*\n", "", stripped)
                 stripped = stripped.rstrip("`").strip()
-
             try:
                 data = json.loads(stripped)
             except Exception:
                 data = None
-
             # Skip tile if no material change – אבל צריך קודם לבנות תיאור
             if data:
                 # Prefer new 'reason' field; fall back to legacy 'description'
@@ -1695,27 +1701,44 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 changed_pct = 0
             txt_full = (f"**{position_desc}** – {description or '—'} "
                         f"(px {changed_pct}\u202F%, move {moved_px}px, conf {confidence}%)")
+            # No Streamlit calls here; return all info for UI thread to render
+            if not data or not data.get("change_detected"):
+                continue
+            comp_b64  = _compose_pair_b64_with_box(pair["ref"], pair["aligned"], box)
+            tile_b64  = _compose_b64_side_by_side(b64_r, b64_a)
+            results.append((txt_full, comp_b64, tile_b64, box))
+        return results
+
+    results = []
+    max_workers = min(4, len(tasks)) if tasks else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_idx = {
+            executor.submit(_process_single_pair, pid, pobj): pid
+            for pid, pobj in tasks
+        }
+        for fut in as_completed(future_to_idx):
+            pid = future_to_idx[fut]
+            try:
+                res = fut.result()
+                results.append((pid, res))  # (pair_idx, list_of_results)
+            except Exception as exc:
+                logging.warning(f"Pair {pid} generated an exception: {exc}")
+            done += 1
+            progress.progress(done / total)
+
+    # --- render results in UI thread (keep order) ---
+    for pair_idx, pair_results in sorted(results, key=lambda x: x[0]):
+        pair_changes_html = []
+        for txt_full, comp_b64, tile_b64, box in pair_results:
             if st.session_state.get("show_tile_debug", False):
-                tile_comp_b64 = _compose_b64_side_by_side(b64_r, b64_a)
                 st.image(
-                    f"data:image/jpeg;base64,{tile_comp_b64}",
+                    f"data:image/jpeg;base64,{tile_b64}",
                     caption=txt_full,
                     use_container_width=True
                 )
-            # -- filter tiny patches after debug so we can still view them --
-            # if changed_pct < 1:
-            #     continue
-            if not data or not data.get("change_detected"):
-                continue
-            # ---------------------------------------------------
             pair_changes_html.append(txt_full)
-
-            # Visuals for report
-            comp_b64  = _compose_pair_b64_with_box(pair["ref"], pair["aligned"], box)
-            tile_b64  = _compose_b64_side_by_side(b64_r, b64_a)
             _add_report_entry(pair_idx, comp_b64, tile_b64, txt_full, box)
 
-        # Render pair‑level results in the analysis tab
         if pair_changes_html:
             md = (f'<div dir="rtl" style="background:#f7f7f7;padding:8px;border-radius:8px">'
                   f'### ממצאים לזוג {pair_idx}<br><br>' +
@@ -1725,10 +1748,6 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                   f'### ממצאים לזוג {pair_idx}<br><br>לא נמצאו שינויים.</div>')
         st.session_state[f"gpt_txt_{pair_idx}"] = md
         st.markdown(md, unsafe_allow_html=True)
-
-        # progress
-        done += 1
-        progress.progress(done / total)
 
     status.text("הניתוח הסתיים!")
     progress.empty()
