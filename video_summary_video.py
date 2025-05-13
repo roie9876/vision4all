@@ -600,6 +600,8 @@ def _extract_frames(video_path: str, fps_target: float):
     Return a list of PIL images sampled from the video at fps_target **and**
     passing the sharpness test.
     """
+    logging.info(f"📥 _extract_frames: {video_path} at {fps_target} fps – start")
+    t0 = time.time()
     import cv2, numpy as np
     from PIL import Image
     cap = cv2.VideoCapture(video_path)
@@ -615,6 +617,10 @@ def _extract_frames(video_path: str, fps_target: float):
         success, frame = cap.read()
         idx += 1
     cap.release()
+    logging.info(
+        f"📥 _extract_frames: {video_path} – {len(frames)} frames kept, "
+        f"{time.time() - t0:.1f}s"
+    )
     return frames
 
 # --- Alignment helper ---
@@ -905,7 +911,13 @@ def _build_aligned_pairs(path_before: str, path_after: str, fps_target: float):
     pairs = []
     for idx, (f1, f2) in enumerate(zip(frames_before, frames_after), start=1):
         aligned_f2, inliers = _align_images(f1, f2)
-        ref_crop, aligned_crop = _crop_to_overlap(f1, aligned_f2, grid_size=(3,3))
+        # use the same grid size the user selected so tile boundaries line up
+        grid_val = int(st.session_state.get("grid_size", 3))
+        ref_crop, aligned_crop = _crop_to_overlap(
+            f1,
+            aligned_f2,
+            grid_size=(grid_val, grid_val)
+        )
         # Compose side-by-side picture for display once
         comp = Image.new("RGB", (ref_crop.width + aligned_crop.width, ref_crop.height))
         comp.paste(ref_crop, (0, 0))
@@ -1017,7 +1029,7 @@ def run_ground_change_detection():
             "ORB max features",
             min_value=100,
             max_value=5000,
-            value=int(st.session_state.get("orb_max_features", 4000)),
+            value=int(st.session_state.get("orb_max_features", 1000)),
             step=100
         )
         st.session_state["lowe_ratio"] = st.slider(
@@ -1078,9 +1090,13 @@ def run_ground_change_detection():
         st.session_state.path_before = path_before
         st.session_state.path_after  = path_after
         # heavy compute – run once and cache in session_state
+        st.write("❶ מתחיל חילוץ פריימים, יישור ו-בניית זוגות…")
+        logging.info("🔄 Stage 1 – frame extraction & alignment started")
         with st.spinner("מחלץ ומיישר פריימים ..."):
             st.session_state.ground_pairs = _build_aligned_pairs(path_before, path_after, fps_target)
         st.success("הזוגות מוכנים! סמן/י ונתח.")
+        st.write(f"✅ הסתיים שלב 1 – נמצאו {len(st.session_state.ground_pairs)} זוגות מוכנים לניתוח")
+        logging.info(f"🔄 Stage 1 done – {len(st.session_state.ground_pairs)} pairs ready")
         # keep temp dir so crops stay valid during session
         st.session_state.temp_dir_gc = tmp
 
@@ -1110,6 +1126,8 @@ def run_ground_change_detection():
                     _safe_rerun()
             with col_run:
                 if st.button("נתח זוגות", key="btn_run_selected", type="primary") and selected_ids:
+                    st.write("❷ מתחיל ניתוח GPT על הזוגות שנבחרו…")
+                    logging.info(f"🔄 Stage 2 – GPT analysis on {len(selected_ids)} selected pairs")
                     _run_pairs_analysis(selected_ids, custom_prompt)
             for pair in st.session_state.ground_pairs:
                 idx = pair["idx"]
@@ -1196,59 +1214,74 @@ def _extract_focused_regions(img_ref, img_aligned,
     tile_height = height // rows
     # ------------------------------------------------------------
 
-    # ---------- STEP-1 -------------------------------------------------
-    for y in range(rows):
-        for x in range(cols):
-            tile_total += 1
-            left = x * tile_width
-            upper = y * tile_height
-            right = min((x + 1) * tile_width, width)
-            lower = min((y + 1) * tile_height, height)
-            ref_tile = img_ref.crop((left, upper, right, lower))
-            aligned_tile = img_aligned.crop((left, upper, right, lower))
-            ref_arr  = np.array(ref_tile)
-            aligned_arr = np.array(aligned_tile)
-            if min(ref_arr.shape) == 0 or min(aligned_arr.shape) == 0:
+    # ---------- STEP‑1 : concurrent scan of all tiles ----------
+    import concurrent.futures
+
+    def _eval_tile(y, x):
+        """Return candidate tuple or None for tile (x,y)."""
+        left  = x * tile_width
+        upper = y * tile_height
+        right = min((x + 1) * tile_width, width)
+        lower = min((y + 1) * tile_height, height)
+        ref_tile     = img_ref.crop((left, upper, right, lower))
+        aligned_tile = img_aligned.crop((left, upper, right, lower))
+        ref_arr      = np.array(ref_tile)
+        aligned_arr  = np.array(aligned_tile)
+        if min(ref_arr.shape) == 0 or min(aligned_arr.shape) == 0:
+            return None
+        # skip mostly‑black warp areas
+        black_ratio = np.all(aligned_arr < 5, axis=2).mean()
+        if black_ratio > 0.20:
+            return None
+        # --- NEW: ignore tiles where the *new* pixels are mostly near‑black (warp wedge) ---
+        # Pixels considered "black" when all RGB channels < 10
+        new_black  = np.all(aligned_arr < 10, axis=2)
+        ref_black  = np.all(ref_arr     < 10, axis=2)
+        # Fraction of pixels that became black only in the aligned image
+        warp_only_ratio = np.logical_and(new_black, ~ref_black).mean()
+        # If > 5 % of the tile turned black after alignment, treat as warp artefact → skip
+        if warp_only_ratio > 0.05:
+            return None
+        # SSIM diff
+        ref_gray     = cv2.cvtColor(ref_arr, cv2.COLOR_RGB2GRAY)
+        aligned_gray = cv2.cvtColor(aligned_arr, cv2.COLOR_RGB2GRAY)
+        diff_ssim    = 1.0 - ssim(ref_gray, aligned_gray)
+        if diff_ssim < min_ssim_diff:
+            return None
+        # temporal stability
+        if "diff_cube" in st.session_state and "current_pair_idx" in st.session_state:
+            pair_idx0 = st.session_state.current_pair_idx - 1
+            win = int(st.session_state.get("stable_window", 1))
+            if not _is_stable_change(pair_idx0, y, x,
+                                     st.session_state.diff_cube,
+                                     th=min_ssim_diff,
+                                     win=win):
+                return None
+        pos_desc = f"חלק {x+1},{y+1} - שורה {y+1}, עמודה {x+1}"
+        return (
+            img_to_b64(ref_tile),
+            img_to_b64(aligned_tile),
+            pos_desc,
+            diff_ssim,
+            (left, upper, right, lower)
+        )
+
+    # build full coordinate list once
+    coords = [(y, x) for y in range(rows) for x in range(cols)]
+    tile_total = len(coords)   # update counter
+
+    # evaluate tiles with a small thread‑pool (NumPy / OpenCV release the GIL)
+    max_workers = min(8, len(coords))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        for res in pool.map(lambda c: _eval_tile(*c), coords):
+            if res is None:
                 continue
-            # --- ignore tiles that are mostly warp‑black (0,0,0) ---
-            # A pixel is "black" if all RGB channels are below 5.
-            black_mask   = np.all(aligned_arr < 5, axis=2)
-            black_ratio  = black_mask.mean()
-            # If more than 20 % of the tile is black, skip – it is an artefact of perspective warp
-            if black_ratio > 0.20:
-                continue
-            # --- use SSIM difference (1 - similarity) ---
-            import cv2
-            ref_gray     = cv2.cvtColor(ref_arr, cv2.COLOR_RGB2GRAY)
-            aligned_gray = cv2.cvtColor(aligned_arr, cv2.COLOR_RGB2GRAY)
-            diff_ssim = 1.0 - ssim(ref_gray, aligned_gray)
-            diff_values.append(diff_ssim)      # NEW
-            position_desc = f"חלק {x+1},{y+1} - שורה {y+1}, עמודה {x+1}"
-            if show_before:
-                dbg = Image.new("RGB", (ref_tile.width + aligned_tile.width, ref_tile.height))
-                dbg.paste(ref_tile, (0, 0))
-                dbg.paste(aligned_tile, (ref_tile.width, 0))
-                st.image(dbg, caption=f"Before SSIM – {position_desc}", use_container_width=True)
-            # דלג על אריחים עם שינוי מבני זעיר
-            if diff_ssim < min_ssim_diff:
-                continue
-            # ---- stable‑change filter (must persist in neighbour pair) ----
-            if "diff_cube" in st.session_state and "current_pair_idx" in st.session_state:
-                pair_idx0 = st.session_state.current_pair_idx - 1  # cube is 0‑based
-                win = int(st.session_state.get("stable_window", 1))
-                if not _is_stable_change(pair_idx0, y, x,
-                                         st.session_state.diff_cube,
-                                         th=min_ssim_diff,
-                                         win=win):
-                    continue  # transient – skip
-            candidates_raw.append((
-                img_to_b64(ref_tile),          # 0
-                img_to_b64(aligned_tile),      # 1
-                position_desc,                 # 2
-                diff_ssim,                     # 3
-                (left, upper, right, lower)      # <-- NEW: absolute coords in ref_img
-            ))
-            tile_after_ssim += 1
+            b64_r, b64_a, desc, diff_v, box = res
+            diff_values.append(diff_v)
+            candidates_raw.append((b64_r, b64_a, desc, diff_v, box))
+    tile_after_ssim = len(candidates_raw)
+
+    # Normalise → all tuples now length-4
 
     # Normalise → all tuples now length-4
     candidates = candidates_raw
@@ -1698,6 +1731,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     ]
                 }
             ]
+            logging.info(f"[{thread_name}] ⇢ GPT primary call scheduled for pair {pair_idx} tile {t_idx}")
             try:
                 resp = call_gpt_with_retry({
                     "model": DEPLOYMENT,
@@ -1705,6 +1739,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     "max_tokens": 1024,
                     "temperature": 0,
                 })
+                logging.info(f"[{thread_name}] ↩︎ GPT primary raw for pair {pair_idx} tile {t_idx}: {resp.choices[0].message.content[:120]}…")
             except Exception as e:
                 logging.warning(f"GPT call exception for pair {pair_idx} tile {t_idx}: {e}")
                 return None
@@ -1715,7 +1750,68 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 stripped = re.sub(r"^```[a-zA-Z]*\n", "", stripped)
                 stripped = stripped.rstrip("`").strip()
             logging.info(f"[{thread_name}] GPT raw pair {pair_idx} tile {t_idx}: {stripped}")
-            return t_idx, stripped, position_desc, b64_r, b64_a, box
+            # -------- Double‑check with a minimal prompt --------
+            needs_confirm = False
+            ans = {}
+            try:
+                data = json.loads(stripped)
+            except Exception:
+                data = None
+            if data:
+                needs_confirm = bool(data.get("change_detected"))
+            # Log decision to enter confirmation stage
+            logging.info(f"[{thread_name}] 🛈 needs_confirm={needs_confirm}  pair {pair_idx} tile {t_idx}")
+            if needs_confirm:
+                confirm_prompt = [
+                    {
+                        "role": "system",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "🟢 התעלם משינויי תאורה, צל, רעש מצלמה ותנועות צמחייה קלות.\n"
+                                    "🔴 האם קיים שינוי מהותי בין שתי התמונות?\n"
+                                    "שינוי מהותי = הופעת/היעלמות אובייקט בולט, פאץ' קרקע/סלע חדש בגוון שונה, "
+                                    "או תזוזה משמעותית ≥50 px.\n\n"
+                                    "החזר JSON תקני בלבד, ללא טקסט נוסף:\n"
+                                    '{ "material_change": true/false, "confidence": 0-100 }'
+                                )
+                            }
+                        ]
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{b64_r}"}
+                            },
+                            {"type": "text", "text": "---"},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{b64_a}"}
+                            },
+                        ]
+                    },
+                ]
+                try:
+                    confirm_resp = call_gpt_with_retry({
+                        "model": DEPLOYMENT,
+                        "messages": confirm_prompt,
+                        "max_tokens": 32,
+                        "temperature": 0,
+                        "top_p": 1,
+                    })
+                    logging.info(f"[{thread_name}] ↩︎ GPT confirm raw for pair {pair_idx} tile {t_idx}: {confirm_resp.choices[0].message.content.strip()[:120]}…")
+                    confirm_txt = confirm_resp.choices[0].message.content.strip()
+                    if confirm_txt.startswith("```"):
+                        confirm_txt = confirm_txt.strip("` \n")  # remove fences
+                    ans = json.loads(confirm_txt)
+                except Exception as e:
+                    logging.warning(f"Confirmation step failed for pair {pair_idx} tile {t_idx}: {e}")
+                    st.write(f"⚠️ אישור נכשל עבור זוג {pair_idx} אריח {t_idx}: {e}")
+                    ans = {}
+            return t_idx, stripped, position_desc, b64_r, b64_a, box, ans if needs_confirm else {}
 
         max_tile_workers = min(4, len(tiles))  # limit to 4 concurrent calls
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_tile_workers) as tile_executor:
@@ -1727,7 +1823,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                 res = fut.result()
                 if res is None:
                     continue
-                t_idx, stripped, position_desc, b64_r, b64_a, box = res
+                t_idx, stripped, position_desc, b64_r, b64_a, box, confirm_ans = res
                 try:
                     data = json.loads(stripped)
                 except Exception:
@@ -1742,6 +1838,13 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     confidence  = 0
                     moved_px    = 0
                     changed_pct = 0
+
+                needs_confirm = bool(data and data.get("change_detected"))
+                # If confirm_ans present, filter by its result
+                if needs_confirm and confirm_ans:
+                    if not (confirm_ans.get("material_change") and confirm_ans.get("confidence", 0) >= 70):
+                        continue
+
                 txt_full = (f"**{position_desc}** – {description or '—'} "
                             f"(px {changed_pct}\u202F%, move {moved_px}px, conf {confidence}%)")
                 if not data or not data.get("change_detected"):
