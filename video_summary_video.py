@@ -89,8 +89,31 @@ def call_gpt_with_retry(payload: dict):
     """
     Dispatch to Azure OpenAI or api.openai.com according to
     st.session_state['api_provider'] (default 'Azure OpenAI').
+
+    For Azure “o*” reasoning models we must translate legacy
+    parameters to the new preview API names.
     """
+    def _adapt_for_o3(p: dict) -> dict:
+        """Return a *copy* of p adapted to the o-series preview contract."""
+        q = p.copy()
+        # rename & delete unsupported keys
+        q["max_completion_tokens"] = q.pop("max_tokens", None)
+        q.pop("temperature",        None)
+        q.pop("top_p",              None)
+        q.pop("frequency_penalty",  None)
+        q.pop("presence_penalty",   None)
+        # optional new field
+        q.setdefault(
+            "reasoning_effort",
+            st.session_state.get("reasoning_effort", "medium")
+        )
+        return q
+
     provider = st.session_state.get("api_provider", "Azure OpenAI")
+    # Detect o-series model (e.g. "o3", "o1-new")
+    if provider == "Azure OpenAI" and re.match(r"o\d", str(payload.get("model", ""))):
+        payload = _adapt_for_o3(payload)
+
     if provider == "OpenAI.com":
         return call_openai_com_with_retry(payload)
     else:
@@ -134,19 +157,59 @@ MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lig
 #  שגודלו ≥ 0.1 % מהמסגרת **או** כל שינוי ברור מירוק → חום/אפור/בז, גם אם < 0.1 %.  
 
 TILE_COMPARE_PROMPT = """
-🟢 התעלם משינויי תאורה, צבע, צל, רעש מצלמה ותנועות קלות בצמחייה.
+🟢   התעלם לחלוטין מ-  
+• שינויי תאורה / צל / איזון-לבן / רעש-ISO / הבהובים.  
+• תנועות קלות של עלים, עשב, שיחים וענפים.  
+• פסי Letter-box או קרופ (מסגרת בצבע אחיד).  
+• גושים אחידים בצבע שנוגעים בגבול התמונה, גובה/רוחב ≤ 10 % מהציר.  
+• Patch בצבע אחיד (σGray < ±2 או entropy < 1.0) **וגודלו < 500 px**.  
+• **מסנן קווים דקים:** יחס-צירים ≥ 5 : 1 **ו-** רוחב-או-גובה ≤ 1 % מהציר *או* ≤ 15 px.  
 
-🔴 שינוי מהותי (דווח `change_detected=true`) -- אם ורק-אם מתקיים אחד:
-• הופעה או היעלמות של אובייקט בולט (≥ 20 % מהמסגרת).
-• אותו אובייקט זז ≥ 50 px או ≥ 25 % מגודלו.
-• רצועה/קו רציף (כביש, שול, תעלה, פס סימון, רצף צמחייה) שאורכו ≥ 50 % מהמסגרת וזז/השתנה בצורתו ≥ 30 px.
-• Patch חדש/נעלם – אזור בעל גוון/מרקם שונה (אדמה, סלע, אספלט)  
-  שגודלו ≥ 0.1 % מהמסגרת **או** כל שינוי ברור %.  
-  לדוגמה, כתם סלע חום חדש בגודל 20×60‎ px חייב להיות 'change_detected=true'.
+• **פילטר צמחייה v3.1:**  
+  Patch שבו ≥ 70 % פיקסלים בטווח ירוק-חום טבעי*  
+  ◦ שטח < 3 % ◦ min-dim < 120 px ◦ `changed_pixels_percent` < 4 %  
+  ◦ ΔSat < 0.20   → **אל תדווח**  
+  ⬆︎ חריג: אם ΔBrightness ≥ 25 Gray **או** ΔHue ≥ 30° → *כן* לדווח.
 
+• **Edge-Strip Filter:**  
+  bbox נוגע בדופן (≤ 20 % × ≥ 50 %) + SSIM > 0.65 → התעלם.  
 
+• **Letter-box Bar Filter:**  
+  bbox נוגע בדופן; Gray ≤ 30 או ≥ 225; σGray < ±3 → התעלם.  
 
-↩︎ החזר **רק** אובייקט JSON בעברית, בלי ``` ובלי טקסט נוסף, במבנה:
+• **פילטר חיתוך-משתנה (Trans-Shift משופר):**  
+  – מצא הזחה גלובלית (ECC / median flow).  
+  – אם |dx|,|dy| ≤ 25 px **ו-** ‎≥ 60 % *מכל הפיקסלים* חווים את אותה הזחה **ב-כל אחד משני הצירים** → הזחה;  
+  – אחרת, בדוק לכל bbox: overlap ≥ 70 % & SSIM ≥ 0.75 → חוסר-יישור, התעלם.  
+
+• **Interior-Patch Filter:**  
+  הפעל **רק** אם ‎> 60 % משטח ה-bbox נמצא במרחק < 5 % מהקצה *ו* יש הזחה ≤ 25 px.  
+
+• **⚠️ High-Contrast Small-Object Rule (חדש):**  
+  אם מופיע/נעלם Patch ש-  
+  ◦ שטחו ≥ 0.3 % מהמסגרת *או* min-dim ≥ 30 px (גם אם < 50 px),  
+  ◦ ΔBrightness ≥ 30 Gray **או** ΔHue ≥ 40° **ו-** ΔSat ≥ 0.25,  
+  ◦ `changed_pixels_percent` ≥ 1 %,  
+  → **כן** לדווח (“אובייקט קטן אך בולט”).  
+
+• נקודת צמחייה/קרקע קטנה (< 2 % או < 50×50 px) המופיעה/נעלמת, אם אין תזוזה ≥ 3 % מציר התמונה.
+
+*טווח ירוק-חום טבעי = Hue ≈ 60-140°, Saturation < 0.5, |R-G| < 15.*
+
+🔵  סנן מראש אם *כל* הבאים:  
+• `changed_pixels_percent` < 1.0 **וכן** < 500 px.  
+• bbox במרחק < 2 % מכל גבול.  
+• ΔHue < 20° **ו-** ΔBrightness < 15.
+
+🔴  החזר `"change_detected": true` **רק אם** אחד:  
+1. **אובייקט בולט** (≥ 20 %) הופיע/נעלם.  
+2. **אובייקט זהה** זז ≥ max(3 % מהמסגרת, 25 % מגודלו, 50 px).  
+3. **רצועה רציפה** (כביש, תעלה, פס) ≥ 50 % אורך → Δ-מיקום ≥ 30 px **ו-** Δ-שטח ≥ 5 %.  
+4. **Patch חדש/נעלם** (סלע, אדמה, אספלט, שלולית, ערימה)  
+   • שטח ≥ 0.5 % **ו-** min-dim ≥ 50 px **או** עומד בכללי High-Contrast.  
+   • ולא נפסל ע״י הכללים הירוקים/כחולים.
+
+↩︎  החזר **רק** JSON בעברית, בלי ```:
 {
   "change_detected": true/false,
   "reason": "תיאור קצר",
@@ -156,7 +219,6 @@ TILE_COMPARE_PROMPT = """
   "changed_pixels_percent": 0-100,
   "confidence": 0-100
 }
-
 """
 
 
@@ -1253,16 +1315,6 @@ def _extract_focused_regions(img_ref, img_aligned,
     # Normalise → all tuples now length-4
     candidates = candidates_raw
 
-    # ---------- DEBUG : view tiles kept after SSIM ----------
-    if show_pre and candidates:                         # NEW
-        st.subheader("🔍 Tiles after SSIM filter")      # NEW
-        for b64_r, b64_a, desc, _, box in candidates[:top_k]:   # NEW
-            ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))  # NEW
-            aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))  # NEW
-            comp = Image.new("RGB", (ref_img.width + aln_img.width, ref_img.height))  # NEW
-            comp.paste(ref_img, (0, 0)); comp.paste(aln_img, (ref_img.width, 0))      # NEW
-            st.image(comp, caption=desc, use_container_width=True)                    # NEW
-
     # ---------- STEP‑1b : Diff‑mask pixel change filter ----------
     diff_thr = float(st.session_state.get("diff_mask_thr", 3.0)) / 100.0  # convert %→fraction
     diff_filtered = []
@@ -1284,12 +1336,12 @@ def _extract_focused_regions(img_ref, img_aligned,
     # Debug view of diff‑mask tiles: view tiles kept after SSIM ----------
     if st.session_state.get("show_diff_tiles", False) and candidates:
         st.subheader("⚡️ Tiles after Diff‑mask filter")
-        for b64_r, b64_a, desc, _, box in candidates[:top_k]:
-            ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))   # FIX
-            aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))   # FIX
-            comp  = Image.new("RGB", (ref_img.width + aln_img.width, ref_img.height))
-            comp.paste(ref_img, (0, 0)); comp.paste(aln_img, (ref_img.width, 0))
-            st.image(comp, caption=desc, use_container_width=True)
+        for b64_r, b64_a, desc, _, box in candidates[:top_k]:   # NEW
+            ref_img = Image.open(io.BytesIO(base64.b64decode(b64_r)))  # NEW
+            aln_img = Image.open(io.BytesIO(base64.b64decode(b64_a)))  # NEW
+            comp = Image.new("RGB", (ref_img.width + aln_img.width, ref_img.height))  # NEW
+            comp.paste(ref_img, (0, 0)); comp.paste(aln_img, (ref_img.width, 0))      # NEW
+            st.image(comp, caption=desc, use_container_width=True)                    # NEW
 
     # ---------- STEP-2: optional segmentation filter (Mask-R CNN) ----------
     if use_segmentation:
@@ -1508,7 +1560,7 @@ def _compose_pair(ref_img: Image.Image,
                 x_off = ref_img.width
                 for x1, y1, x2, y2 in bboxes:
                     draw.rectangle([x1, y1, x2, y2], outline="red", width=4)
-                    draw.rectangle([x1 + x_off, y1, x2 + x_off, y2],
+                    draw.rectangle([x1 + x_off, y1, x2 + x_off, y2 + x_off],
                                    outline="red", width=4)
         except Exception as e:
             logging.warning(f"Segmentation overlay failed: {e}")
@@ -1517,26 +1569,29 @@ def _compose_pair(ref_img: Image.Image,
 
 # ...existing code...
 
-# ---------- unified prompt helpers ----------
+# ---------- GLOBAL PROMPT HANDLING ----------
 DEFAULT_PROMPT = (
-    "אתה סוכן בינה מלאכותית להשוואת תמונות, עליך להשוות בין שתי התמונות ולהתייחס לקטע אשר מוקף באדם"
-    "המטרה שלך לתאר בעברית האם יש שינוי בין שתי התמונות בריבוע אשר מסומן באדום, במידה ויש שינוי תאר אותו"
+    "אתה סוכן בינה מלאכותית להשוואת תמונות; התייחס רק לשינויים מהותיים באזור המסומן."
 )
 
-def get_user_prompt() -> str:
+def prompt_text_area(label: str = "GPT prompt (applies everywhere):"):
     """
-    Return the prompt stored in session (or the default).
-    Call `prompt_text_area()` once per page to render the UI.
+    Render a single text‑area for the user‑defined GPT prompt and keep it
+    in ``st.session_state['user_prompt']``.  
+    Returns the current prompt string.
     """
-    return st.session_state.get("user_prompt", DEFAULT_PROMPT)
-
-def prompt_text_area():
-    """Render the prompt editor once per page."""
     if "user_prompt" not in st.session_state:
         st.session_state["user_prompt"] = DEFAULT_PROMPT
-    st.text_area("GPT prompt (applies everywhere):",
-                 key="user_prompt",
-                 height=100)
+    st.session_state["user_prompt"] = st.text_area(
+        label,
+        value=st.session_state["user_prompt"],
+        height=100
+    )
+    return st.session_state["user_prompt"]
+
+def get_user_prompt() -> str:
+    """Safely return the current user prompt (or the default one)."""
+    return st.session_state.get("user_prompt", DEFAULT_PROMPT)
 # -----------------------------------------------------------
 
 # ---------- REPORT HELPERS ---------------------------------
