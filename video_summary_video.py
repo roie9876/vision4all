@@ -1,5 +1,13 @@
 #working ver#
+#working ver#
 import streamlit as st
+# Use the full browser width – avoids the "single narrow column" effect
+st.set_page_config(page_title="Ground‑Change Detector", layout="wide")
+# allow markdown containers to use the full width
+st.markdown(
+    "<style>.stMarkdown{max-width:100% !important;}</style>",
+    unsafe_allow_html=True,
+)
 # --- helper to support both old `st.experimental_rerun` and new `st.rerun` ---
 def _safe_rerun():
     """
@@ -20,7 +28,7 @@ DEFAULT_AFTER_VIDEO  = "אחרי - גובה עשרים מטר.mp4"
 import io
 import base64
 import requests
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -93,16 +101,30 @@ def call_gpt_with_retry(payload: dict):
     For Azure “o*” reasoning models we must translate legacy
     parameters to the new preview API names.
     """
+    """
+    Dispatch to Azure OpenAI or api.openai.com according to
+    st.session_state['api_provider'] (default 'Azure OpenAI').
+
+    Adds a retry loop **also for Azure** so that transient
+    400 Bad Request (and 5xx) responses are retried exactly the
+    same way we already do for api.openai.com.
+
+    For Azure “o*” reasoning models we must translate legacy
+    parameters to the new preview API names.
+    """
+    import time, logging, copy
+    import openai
+    from openai import OpenAIError
+
     def _adapt_for_o3(p: dict) -> dict:
         """Return a *copy* of p adapted to the o-series preview contract."""
-        q = p.copy()
+        q = copy.deepcopy(p)
         # rename & delete unsupported keys
         q["max_completion_tokens"] = q.pop("max_tokens", None)
         q.pop("temperature",        None)
         q.pop("top_p",              None)
         q.pop("frequency_penalty",  None)
         q.pop("presence_penalty",   None)
-        # optional new field
         q.setdefault(
             "reasoning_effort",
             st.session_state.get("reasoning_effort", "medium")
@@ -110,14 +132,50 @@ def call_gpt_with_retry(payload: dict):
         return q
 
     provider = st.session_state.get("api_provider", "Azure OpenAI")
-    # Detect o-series model (e.g. "o3", "o1-new")
-    if provider == "Azure OpenAI" and re.match(r"o\d", str(payload.get("model", ""))):
+    is_o3 = provider == "Azure OpenAI" and re.match(r"o\d", str(payload.get("model", "")))
+
+    if is_o3:
         payload = _adapt_for_o3(payload)
 
-    if provider == "OpenAI.com":
-        return call_openai_com_with_retry(payload)
-    else:
-        return call_azure_openai_with_retry(payload)
+    # -------------------------------------------------
+    # Uniform retry policy – 400 & 5xx are considered transient
+    # -------------------------------------------------
+    max_retries = 5
+    backoff     = 2.0
+    attempt     = 1
+    while True:
+        try:
+            if provider == "OpenAI.com":
+                # call_openai_com_with_retry already implements its own retry loop,
+                # so a single call is enough here.
+                return call_openai_com_with_retry(payload, max_retries=max_retries, backoff=backoff)
+            else:  # Azure OpenAI
+                return call_azure_openai_with_retry(payload)
+        except Exception as e:
+            # Detect HTTP status code if present
+            msg = str(e)
+            # --- EXTRA fallbacks for Azure wrapper quirks ---
+            # 1) Azure HttpResponseError may embed "(BadRequest)" with no numeric code.
+            if "BadRequest" in msg or "Bad Request" in msg:
+                status_code = 400
+            # 2) openai-python 1.x raises TypeError when callback signature mismatches
+            #    and the message looks like "_notify_fail() got an unexpected keyword argument 'attempt'".
+            #    Treat it as transient / retriable.
+            if "_notify_fail() got an unexpected keyword argument" in msg:
+                status_code = 400
+            status_code = getattr(e, "status_code", None)
+            if status_code is None:
+                # try to parse from message "HTTP/1.1 XXX"
+                m = re.search(r"\b(\d{3})\b", msg)
+                if m:
+                    status_code = int(m.group(1))
+            retriable = status_code in (400, 429, 500, 502, 503, 504)
+            if not retriable or attempt >= max_retries:
+                logging.warning(f"GPT call failed (attempt {attempt}/{max_retries}) – giving up. Error: {e}")
+                raise
+            logging.warning(f"GPT call error (attempt {attempt}/{max_retries}): {e}")
+            time.sleep(backoff * attempt)
+            attempt += 1
 # ------------------------------------------
 
 # Local imports
@@ -157,67 +215,71 @@ MIN_SSIM_DIFF = 0.7   # 35 % difference threshold — reduces small colour/lig
 #  שגודלו ≥ 0.1 % מהמסגרת **או** כל שינוי ברור מירוק → חום/אפור/בז, גם אם < 0.1 %.  
 
 TILE_COMPARE_PROMPT = """
-🟢   התעלם לחלוטין מ-  
-• שינויי תאורה / צל / איזון-לבן / רעש-ISO / הבהובים.  
-• תנועות קלות של עלים, עשב, שיחים וענפים.  
-• פסי Letter-box או קרופ (מסגרת בצבע אחיד).  
-• גושים אחידים בצבע שנוגעים בגבול התמונה, גובה/רוחב ≤ 10 % מהציר.  
-• Patch בצבע אחיד (σGray < ±2 או entropy < 1.0) **וגודלו < 500 px**.  
-• **מסנן קווים דקים:** יחס-צירים ≥ 5 : 1 **ו-** רוחב-או-גובה ≤ 1 % מהציר *או* ≤ 15 px.  
+🟢   התעלם לחלוטין מ-
+• שינויי תאורה / צל / איזון-לבן / רעש-ISO / הבהובים.
+• תנועות קלות של עלים, עשב, שיחים וענפים.
+• פסי Letter-box או קרופ (מסגרת בצבע אחיד).
+• גושים אחידים בצבע שנוגעים בגבול התמונה, גובה/רוחב ≤ 10 % מהציר.
+• Patch בצבע אחיד (σGray < ±2 או entropy < 1.0) וגודלו < 500 px.
+• מסנן קווים דקים: יחס-צירים ≥ 5 : 1 ו- רוחב-או-גובה ≤ 1 % מהציר או ≤ 15 px.
 
-• **פילטר צמחייה v3.1:**  
-  Patch שבו ≥ 70 % פיקסלים בטווח ירוק-חום טבעי*  
-  ◦ שטח < 3 % ◦ min-dim < 120 px ◦ `changed_pixels_percent` < 4 %  
-  ◦ ΔSat < 0.20   → **אל תדווח**  
-  ⬆︎ חריג: אם ΔBrightness ≥ 25 Gray **או** ΔHue ≥ 30° → *כן* לדווח.
+• פילטר צמחייה v3.2:
+Patch שבו ≥ 70 % פיקסלים בטווח ירוק-חום טבעי*
+◦ שטח < 3 %   ◦ min-dim < 120 px   ◦ changed_pixels_percent < 4 %
+◦ ΔSat < 0.20   → אל תדווח.
+⬆︎ חריג: אם edge-density > 0.15 או ΔBrightness ≥ 20 Gray → אל תפסול (ייתכן סלע/אבן גלויה).
 
-• **Edge-Strip Filter:**  
-  bbox נוגע בדופן (≤ 20 % × ≥ 50 %) + SSIM > 0.65 → התעלם.  
+• Edge-Strip Filter:
+bbox נוגע בדופן (≤ 20 % × ≥ 50 %) + SSIM > 0.65 → התעלם.
 
-• **Letter-box Bar Filter:**  
-  bbox נוגע בדופן; Gray ≤ 30 או ≥ 225; σGray < ±3 → התעלם.  
+• Letter-box Bar Filter:
+bbox נוגע בדופן; Gray ≤ 30 או ≥ 225; σGray < ±3 → התעלם.
 
-• **פילטר חיתוך-משתנה (Trans-Shift משופר):**  
-  – מצא הזחה גלובלית (ECC / median flow).  
-  – אם |dx|,|dy| ≤ 25 px **ו-** ‎≥ 60 % *מכל הפיקסלים* חווים את אותה הזחה **ב-כל אחד משני הצירים** → הזחה;  
-  – אחרת, בדוק לכל bbox: overlap ≥ 70 % & SSIM ≥ 0.75 → חוסר-יישור, התעלם.  
+• פילטר חיתוך-משתנה (Trans-Shift משופר):
+– מצא הזחה גלובלית (ECC / median-flow).
+– אם |dx|,|dy| ≤ 25 px ו- ≥ 60 % מהפיקסלים חווים אותה הזחה בשני הצירים → הזחה.
+– אחרת, לכל bbox: overlap ≥ 70 % & SSIM ≥ 0.75 → חוסר-יישור; התעלם.
 
-• **Interior-Patch Filter:**  
-  הפעל **רק** אם ‎> 60 % משטח ה-bbox נמצא במרחק < 5 % מהקצה *ו* יש הזחה ≤ 25 px.  
+• Interior-Patch Filter:
+הפעל רק אם ‎> 60 % משטח ה-bbox במרחק < 5 % מהקצה ו הזחה ≤ 25 px.
 
-• **⚠️ High-Contrast Small-Object Rule (חדש):**  
-  אם מופיע/נעלם Patch ש-  
-  ◦ שטחו ≥ 0.3 % מהמסגרת *או* min-dim ≥ 30 px (גם אם < 50 px),  
-  ◦ ΔBrightness ≥ 30 Gray **או** ΔHue ≥ 40° **ו-** ΔSat ≥ 0.25,  
-  ◦ `changed_pixels_percent` ≥ 1 %,  
-  → **כן** לדווח (“אובייקט קטן אך בולט”).  
+• ⚠️ High-Contrast Small-Object (v2):
+אם מופיע/נעלם Patch ש-
+◦ changed_pixels_percent ≥ 1 %
+◦ min-dim ≥ 25 px או שטח ≥ 0.3 %
+◦ (ΔBrightness ≥ 20 Gray או ΔHue ≥ 20°)
+◦ אם Saturation-before < 0.25 → אין דרישת ΔSat ≥ 0.25
+→ כן לדווח (“אובייקט קטן אך בולט”).
 
 • נקודת צמחייה/קרקע קטנה (< 2 % או < 50×50 px) המופיעה/נעלמת, אם אין תזוזה ≥ 3 % מציר התמונה.
 
-*טווח ירוק-חום טבעי = Hue ≈ 60-140°, Saturation < 0.5, |R-G| < 15.*
+טווח ירוק-חום טבעי = Hue ≈ 60-140°, Saturation < 0.5, |R-G| < 15.
 
-🔵  סנן מראש אם *כל* הבאים:  
-• `changed_pixels_percent` < 1.0 **וכן** < 500 px.  
-• bbox במרחק < 2 % מכל גבול.  
-• ΔHue < 20° **ו-** ΔBrightness < 15.
+🔵  סנן מראש אם כל הבאים:
+• changed_pixels_percent < 1.0 וכן < 500 px.
+• bbox במרחק < 2 % מכל גבול.
+• ΔHue < 20° ו- ΔBrightness < 15.
 
-🔴  החזר `"change_detected": true` **רק אם** אחד:  
-1. **אובייקט בולט** (≥ 20 %) הופיע/נעלם.  
-2. **אובייקט זהה** זז ≥ max(3 % מהמסגרת, 25 % מגודלו, 50 px).  
-3. **רצועה רציפה** (כביש, תעלה, פס) ≥ 50 % אורך → Δ-מיקום ≥ 30 px **ו-** Δ-שטח ≥ 5 %.  
-4. **Patch חדש/נעלם** (סלע, אדמה, אספלט, שלולית, ערימה)  
-   • שטח ≥ 0.5 % **ו-** min-dim ≥ 50 px **או** עומד בכללי High-Contrast.  
-   • ולא נפסל ע״י הכללים הירוקים/כחולים.
+🔴  החזר "change_detected": true רק אם אחד:
+	1.	אובייקט בולט (≥ 20 % מהמסגרת) הופיע/נעלם.
+	2.	אובייקט זהה זז ≥ max(3 % מהמסגרת, 25 % מגודלו, 50 px).
+	3.	רצועה רציפה (כביש, תעלה, פס) ≥ 50 % אורך → Δ-מיקום ≥ 30 px ו- Δ-שטח ≥ 5 %.
+	4. Patch חדש/נעלם (סלע, אדמה, אספלט, שלולית, ערימה)
+   • אם min-dim ≥ 50 px → די בשטח ≥ 0.5 %.
+   • אם 20 px ≤ min-dim < 50 px → חייב לעמוד בכלל High-Contrast v2
+       (ΔBrightness ≥ 20 Gray **או** ΔHue ≥ 20°)  **וגם**
+       changed_pixels_percent ≥ 0.5 %.
+   • ו-אינו נפסל ע״י הכללים הירוקים/כחולים.
 
-↩︎  החזר **רק** JSON בעברית, בלי ```:
+↩︎  החזר רק JSON בעברית, בלי ```:
 {
-  "change_detected": true/false,
-  "reason": "תיאור קצר",
-  "bbox_before": [x1, y1, x2, y2],
-  "bbox_after":  [x1', y1', x2', y2'],
-  "movement_px": 0-999,
-  "changed_pixels_percent": 0-100,
-  "confidence": 0-100
+“change_detected”: true/false,
+“reason”: “תיאור קצר”,
+“bbox_before”: [x1, y1, x2, y2],
+“bbox_after”:   [x1’, y1’, x2’, y2’],
+“movement_px”: 0-999,
+“changed_pixels_percent”: 0-100,
+“confidence”: 0-100
 }
 """
 
@@ -736,45 +798,42 @@ def _align_images(img_ref, img_to_align,
 
 def _crop_to_overlap(img_ref: Image.Image, img_aligned: Image.Image, grid_size=(3, 3)):
     """
-    Return the maximal overlapping area of `img_ref` and `img_aligned`
-    after warp, then snap that rectangle so its width/height are divisible
-    by `grid_size`. This guarantees that every tile boundary is identical
-    in both crops.
-    If no valid overlap exists the originals are returned.
+    Return the maximal overlapping area between `img_ref` and `img_aligned`
+    (non‑black pixels after warp).  Instead of trimming to a multiple of the
+    grid, keep the full overlap and pad with black so the width/height become
+    divisible by `grid_size`.
     """
     import numpy as np
     a_ref   = np.array(img_ref)
     a_align = np.array(img_aligned)
-    # valid pixels are non‑black (avoid warp padding)
+
     mask_ref   = np.any(a_ref   != 0, axis=2)
     mask_align = np.any(a_align != 0, axis=2)
 
     ys_ref, xs_ref     = np.where(mask_ref)
     ys_align, xs_align = np.where(mask_align)
     if xs_ref.size == 0 or ys_ref.size == 0 or xs_align.size == 0:
-        return img_ref, img_aligned
-    # bounding boxes
-    x1_ref,  x2_ref  = xs_ref.min(),   xs_ref.max()
-    y1_ref,  y2_ref  = ys_ref.min(),   ys_ref.max()
-    x1_aln, x2_aln = xs_align.min(), xs_align.max()
-    y1_aln, y2_aln = ys_align.min(), ys_align.max()
-    # intersection rectangle
-    left   = max(x1_ref,  x1_aln)
-    top    = max(y1_ref,  y1_aln)
-    right  = min(x2_ref,  x2_aln)
-    bottom = min(y2_ref,  y2_aln)
+        return img_ref, img_aligned  # fallback – no valid pixels
+
+    left   = max(xs_ref.min(),  xs_align.min())
+    top    = max(ys_ref.min(),  ys_align.min())
+    right  = min(xs_ref.max(),  xs_align.max())
+    bottom = min(ys_ref.max(),  ys_align.max())
     if right <= left or bottom <= top:
         return img_ref, img_aligned  # no overlap
-    # snap dimensions to the grid
+
+    ref_crop   = img_ref.crop((left, top, right + 1, bottom + 1))
+    align_crop = img_aligned.crop((left, top, right + 1, bottom + 1))
+
     cols, rows = grid_size
-    width  = right - left + 1
-    height = bottom - top + 1
-    width  -= width  % cols
-    height -= height % rows
-    if width == 0 or height == 0:
-        return img_ref, img_aligned  # fallback
-    box = (left, top, left + width, top + height)
-    return img_ref.crop(box), img_aligned.crop(box)
+    w, h = ref_crop.size
+    pad_r = (-w) % cols
+    pad_b = (-h) % rows
+    if pad_r or pad_b:
+        ref_crop   = ImageOps.expand(ref_crop,   border=(0, 0, pad_r, pad_b), fill=(0, 0, 0))
+        align_crop = ImageOps.expand(align_crop, border=(0, 0, pad_r, pad_b), fill=(0, 0, 0))
+
+    return ref_crop, align_crop
 
 def _show_aligned_pairs(frames_before, frames_after, max_pairs: int = 5):
     """
@@ -965,9 +1024,10 @@ def _build_aligned_pairs(path_before: str, path_after: str, fps_target: float):
     frames_before = _extract_frames(path_before, fps_target)
     frames_after  = _extract_frames(path_after,  fps_target)
     pairs = []
+    grid_val = int(st.session_state.get("grid_size", 3))
     for idx, (f1, f2) in enumerate(zip(frames_before, frames_after), start=1):
         aligned_f2, inliers = _align_images(f1, f2)
-        ref_crop, aligned_crop = _crop_to_overlap(f1, aligned_f2, grid_size=(3,3))
+        ref_crop, aligned_crop = _crop_to_overlap(f1, aligned_f2, grid_size=(grid_val, grid_val))
         # Compose side-by-side picture for display once
         comp = Image.new("RGB", (ref_crop.width + aligned_crop.width, ref_crop.height))
         comp.paste(ref_crop, (0, 0))
@@ -1347,28 +1407,20 @@ def _extract_focused_regions(img_ref, img_aligned,
     if use_segmentation:
         score_thr = float(st.session_state.get("seg_score_thr", 0.50))
         iou_thr   = float(st.session_state.get("seg_iou_thr", 0.30))
-        filtered  = []
+        filtered = []
         for b64_r, b64_a, desc, diff, box in candidates:
             ref_tile  = Image.open(io.BytesIO(base64.b64decode(b64_r)))
             aln_tile  = Image.open(io.BytesIO(base64.b64decode(b64_a)))
-            boxes = _maskrcnn_new_objects(ref_tile, aln_tile,
-                                          score_thr=score_thr,
-                                          iou_thr=iou_thr)
+            # keep the tile only if Mask‑RCNN detects NEW objects
+            boxes = _maskrcnn_new_objects(
+                ref_tile, aln_tile,
+                score_thr=score_thr,
+                iou_thr=iou_thr
+            )
             if not boxes:
                 continue
-            # draw boxes for debugging
-            ref_draw, aln_draw = ref_tile.copy(), aln_tile.copy()
-            d1, d2 = ImageDraw.Draw(ref_draw), ImageDraw.Draw(aln_draw)
-            for x1, y1, x2, y2 in boxes:
-                # draw on reference tile
-                d1.rectangle([x1, y1, x2, y2], outline="red", width=3)
-                # draw on aligned tile (same local coords, no offset needed)
-                d2.rectangle([x1, y1, x2, y2], outline="red", width=3)
-            filtered.append((img_to_b64(ref_draw),
-                             img_to_b64(aln_draw),
-                             desc,
-                             diff,
-                             box))
+            # 👉 keep ORIGINAL tiles (no red overlay) for GPT
+            filtered.append((b64_r, b64_a, desc, diff, box))
         candidates = filtered
 
         # ---------- DEBUG : view tiles that passed the YOLO test ----------
@@ -1384,27 +1436,8 @@ def _extract_focused_regions(img_ref, img_aligned,
     # ---------- STEP-3: sort & return ----------
     tile_after_yolo = len(candidates)
 
-    # --- draw a red border on every remaining tile (so GPT sees it) ---
-    def _with_border(b64_img: str) -> str:
-        """Decode → draw 3-px red rectangle → re-encode."""
-        from PIL import Image, ImageDraw
-        import io, base64
-        img = Image.open(io.BytesIO(base64.b64decode(b64_img))).convert("RGB")
-        draw = ImageDraw.Draw(img)
-        draw.rectangle([0, 0, img.width - 1, img.height - 1], outline="red", width=1)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        return base64.b64encode(buf.getvalue()).decode()
-
-    # apply the red border to every surviving candidate _before_ sorting/returning
-    bordered = []
-    for r_b64, a_b64, desc, diff_v, box in candidates:
-        bordered.append((_with_border(r_b64),
-                         _with_border(a_b64),
-                         desc,
-                         diff_v,
-                         box))
-    candidates = bordered
+    # keep tiles as‑is (no red border)
+    candidates = [(r_b64, a_b64, desc, diff_v, box) for r_b64, a_b64, desc, diff_v, box in candidates]
 
     # ---------- DEBUG : show counts ----------
     if st.session_state.get("show_tile_stats", False):
@@ -1682,6 +1715,11 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         st.session_state.get("show_diff_tiles"),
         st.session_state.get("show_tile_debug")
     ])
+    # Create a container to keep debug tiles separate from the main column
+    tile_debug_container = (
+        st.expander("🎞️ Tiles sent to GPT (debug)", expanded=False)
+        if st.session_state.get("show_tile_debug", False) else None
+    )
 
     # --- build task list once, independent of debug flags ---
     tasks = []
@@ -1718,6 +1756,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         logging.info(f"[{thread_name}]  Pair {pair_idx}: {len(tiles)} tiles ready")
         t_start = time.time()
         results = []
+        debug_entries = []
         # --- run GPT calls for all tiles concurrently ---
         def _gpt_for_tile(args):
             t_idx, b64_r, b64_a, position_desc, box = args
@@ -1737,7 +1776,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     "content": [
                         {
                             "type": "text",
-                            "text": "אתה מודל בינה-מלאכותית שתפקידו להשוות שתי תמונות ולזהות שינוי מהותי באזור המסומן באדום. החזר JSON תקני בלבד."
+                            "text": "אתה מודל בינה-מלאכותית שתפקידו להשוות שתי תמונות ולזהות שינוי מהותי באריח. החזר JSON תקני בלבד."
                         }
                     ]
                 },
@@ -1799,6 +1838,10 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
                     changed_pct = 0
                 txt_full = (f"**{position_desc}** – {description or '—'} "
                             f"(px {changed_pct}\u202F%, move {moved_px}px, conf {confidence}%)")
+                # תמיד שומר עותק לדיבוג
+                debug_entries.append(
+                    (txt_full, _compose_b64_side_by_side(b64_r, b64_a))
+                )
                 if not data or not data.get("change_detected"):
                     continue
                 comp_b64  = _compose_pair_b64_with_box(pair["ref"], pair["aligned"], box)
@@ -1807,7 +1850,7 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         elapsed = time.time() - t_start
         logging.info(f"[{thread_name}] ✅ Pair {pair_idx} finished – "
                      f"{len(results)} changes, {elapsed:.1f}s")
-        return results
+        return results , debug_entries
 
     results = []
     max_workers = min(4, len(tasks)) if tasks else 1
@@ -1825,9 +1868,9 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
         for fut in as_completed(future_to_idx):
             pid = future_to_idx[fut]
             try:
-                res = fut.result()
-                results.append((pid, res))  # (pair_idx, list_of_results)
-                logging.info(f"↩️  Pair {pid} collected – {len(res)} changes")
+                changes, dbg = fut.result()
+                results.append((pid, changes, dbg)) # (pair_idx, list_of_results)
+                logging.info(f"↩️  Pair {pid} collected – {len(changes)} changes")
             except Exception as exc:
                 logging.warning(f"Pair {pid} generated an exception: {exc}")
             done += 1
@@ -1835,11 +1878,21 @@ def _run_pairs_analysis(selected_ids, custom_prompt: str) -> None:
             logging.info(f"Progress: {done}/{total} pairs finished")
 
     # --- render results in UI thread (keep order) ---
-    for pair_idx, pair_results in sorted(results, key=lambda x: x[0]):
+    for pair_idx, pair_changes, pair_debug in sorted(results, key=lambda x: x[0]):
+        # --- הצגת דיבוג (גם false) ---
+        if st.session_state.get("show_tile_debug", False):
+            target = tile_debug_container if tile_debug_container else st
+            for dbg_txt, dbg_tile_b64 in pair_debug:
+                target.image(
+                    f"data:image/jpeg;base64,{dbg_tile_b64}",
+                    caption=dbg_txt,
+                    use_container_width=True
+                )
         pair_changes_html = []
-        for txt_full, comp_b64, tile_b64, box in pair_results:
+        for txt_full, comp_b64, tile_b64, box in pair_changes:
             if st.session_state.get("show_tile_debug", False):
-                st.image(
+                target = tile_debug_container if tile_debug_container else st
+                target.image(
                     f"data:image/jpeg;base64,{tile_b64}",
                     caption=txt_full,
                     use_container_width=True
