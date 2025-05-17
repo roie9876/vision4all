@@ -8,17 +8,61 @@ import os
 import logging
 import openai
 import time
+import re
+import os
+import copy
 
-# Setup logging configuration
-# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
-#     logging.FileHandler("app.log"),
-#     logging.StreamHandler()
-# ])
 
-# Test log message to ensure logging is working
-# logging.debug("Logging is configured correctly in utils.py")
+def _adapt_for_o_series(p: dict) -> dict:
+    """
+    מתאים payload של ChatCompletion למודלי-ההיגיון (o-series) בתצורת preview
+    של Azure OpenAI.
 
-# Load environment variables
+    • 2025-01-01-preview – כמו ChatCompletion הרגיל + reasoning_effort.
+    • 2025-03-01-preview – חוזה מצומצם: {model, messages,
+      temperature, top_p, reasoning_effort, max_completion_tokens}.
+    """
+    api_ver = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+
+    # ---------- חוזה ה-preview הישן (תואם ChatCompletion) ----------
+    if api_ver < "2025-03-01-preview":
+        q = copy.deepcopy(p)
+        # Azure רגיש לשדות מיותרים – מסירים אותם
+        q.pop("stop", None)
+        if q.get("frequency_penalty", 0) == 0:
+            q.pop("frequency_penalty", None)
+        if q.get("presence_penalty", 0) == 0:
+            q.pop("presence_penalty", None)
+        if not q.get("stream"):
+            q.pop("stream", None)
+        q.setdefault("reasoning_effort", "medium")
+            # --- o-series preview rules ---
+        # 1) Temperature must be the default (=1)
+        if q.get("temperature", 1) != 1:
+            q.pop("temperature", None)
+
+        # 2) Rename max_tokens → max_completion_tokens
+        if "max_tokens" in q:
+            q["max_completion_tokens"] = q.pop("max_tokens")
+        return q
+
+    # ---------- חוזה ה-preview החדש (2025-03-01-preview) ----------
+    q = {
+        "model": p["model"],
+        "messages": p["messages"],
+        "max_completion_tokens": p.get("max_tokens", 2048),
+    }
+        # --- o-series preview rules ---
+    # Keep temperature only if it equals the default (=1)
+    temp = p.get("temperature", 1)
+    if temp == 1:
+        q["temperature"] = temp
+
+    if "top_p" in p:
+        q["top_p"] = p["top_p"]
+    q.setdefault("reasoning_effort", "medium")
+    return q
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -94,6 +138,11 @@ def call_azure_openai_with_retry(create_kwargs: dict,
     Send a chat completion request with exponential back-off.
     All project files import this name, so we keep the signature intact.
     """
+
+    # --- Adapt payload for o‑series reasoning models (o1/o2/o3…) ---
+    if re.match(r"o\d", str(create_kwargs.get("model", ""))):
+        create_kwargs = _adapt_for_o_series(create_kwargs)
+
     for attempt in range(1, max_attempts + 1):
         try:
             return client.chat.completions.create(**create_kwargs)
@@ -107,7 +156,16 @@ def call_azure_openai_with_retry(create_kwargs: dict,
             _notify_retry(e, attempt, wait)
             time.sleep(wait)
         except Exception as e:
-            # Unknown / non-retryable error – show once and stop
+            # ---------- EXTRA DEBUG for Azure 4xx/5xx bodies ----------
+            try:
+                resp = getattr(e, "response", None)
+                if resp is not None and hasattr(resp, "text"):
+                    logging.error("Azure error body: %s", resp.text)
+            except Exception:
+                pass
+            # ---------- END EXTRA DEBUG ------------------------------
+
+            # Unknown / non‑retryable error – show once and stop
             _notify_fail(e, attempt=1)
             raise
 
