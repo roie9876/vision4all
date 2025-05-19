@@ -1,0 +1,518 @@
+2025-05-19 10:31:49,859  INFO     [DEBUG] log file initialised: /Users/robenhai/vision4all/logs/gcd_20250519_103149.log
+2025-05-19 10:32:42,060  INFO     Converting object type: str
+2025-05-19 10:32:42,066  INFO     Converting object type: str
+2025-05-19 10:32:42,302  INFO     Converting object type: str
+2025-05-19 10:32:42,309  INFO     Converting object type: str
+2025-05-19 10:32:42,405  INFO     Converting object type: str
+2025-05-19 10:32:42,412  INFO     Converting object type: str
+2025-05-19 10:32:42,508  INFO     Converting object type: str
+2025-05-19 10:32:42,515  INFO     Converting object type: str
+2025-05-19 10:32:42,612  INFO     Converting object type: str
+2025-05-19 10:32:42,619  INFO     Converting object type: str
+2025-05-19 10:32:42,713  INFO     Converting object type: str
+2025-05-19 10:32:42,720  INFO     Converting object type: str
+2025-05-19 10:32:42,812  INFO     Converting object type: str
+2025-05-19 10:32:42,819  INFO     Converting object type: str
+2025-05-19 10:32:42,911  INFO     Converting object type: str
+2025-05-19 10:32:42,917  INFO     Converting object type: str
+2025-05-19 10:32:43,010  INFO     Converting object type: str
+2025-05-19 10:32:43,016  INFO     Converting object type: str
+2025-05-19 10:32:43,110  INFO     Converting object type: str
+2025-05-19 10:32:43,117  INFO     Converting object type: str
+2025-05-19 10:32:43,210  INFO     Converting object type: str
+2025-05-19 10:32:43,216  INFO     Converting object type: str
+2025-05-19 10:32:43,309  INFO     Converting object type: str
+2025-05-19 10:32:43,315  INFO     Converting object type: str
+2025-05-19 10:32:43,407  INFO     Converting object type: str
+2025-05-19 10:32:43,413  INFO     Converting object type: str
+2025-05-19 10:32:43,505  INFO     Converting object type: str
+2025-05-19 10:32:43,512  INFO     Converting object type: str
+2025-05-19 10:32:43,602  INFO     Converting object type: str
+2025-05-19 10:32:43,608  INFO     Converting object type: str
+2025-05-19 10:32:43,699  INFO     Converting object type: str
+2025-05-19 10:32:43,706  INFO     Converting object type: str
+2025-05-19 10:32:43,796  INFO     Converting object type: str
+2025-05-19 10:32:43,802  INFO     Converting object type: str
+2025-05-19 10:32:43,892  INFO     Converting object type: str
+2025-05-19 10:32:43,899  INFO     Converting object type: str
+2025-05-19 10:32:43,990  INFO     Converting object type: str
+2025-05-19 10:32:43,996  INFO     Converting object type: str
+2025-05-19 10:32:44,110  INFO     Converting object type: str
+2025-05-19 10:32:44,116  INFO     Converting object type: str
+2025-05-19 10:32:44,210  INFO     Converting object type: str
+2025-05-19 10:32:44,217  INFO     Converting object type: str
+2025-05-19 10:32:44,309  INFO     Converting object type: str
+2025-05-19 10:32:44,315  INFO     Converting object type: str
+2025-05-19 10:32:44,404  INFO     Converting object type: str
+2025-05-19 10:32:44,411  INFO     Converting object type: str
+2025-05-19 10:32:44,503  INFO     Converting object type: str
+2025-05-19 10:32:44,509  INFO     Converting object type: str
+2025-05-19 10:32:44,599  INFO     Converting object type: str
+2025-05-19 10:32:44,606  INFO     Converting object type: str
+2025-05-19 10:32:44,699  INFO     Converting object type: str
+2025-05-19 10:32:44,705  INFO     Converting object type: str
+2025-05-19 10:32:44,797  INFO     Converting object type: str
+2025-05-19 10:32:44,810  INFO     Converting object type: str
+2025-05-19 10:32:44,908  INFO     Converting object type: str
+2025-05-19 10:32:44,914  INFO     Converting object type: str
+2025-05-19 10:32:45,005  INFO     Converting object type: str
+2025-05-19 10:32:45,012  INFO     Converting object type: str
+2025-05-19 10:32:45,105  INFO     Converting object type: str
+2025-05-19 10:32:45,111  INFO     Converting object type: str
+2025-05-19 10:32:45,204  INFO     Converting object type: str
+2025-05-19 10:32:45,211  INFO     Converting object type: str
+2025-05-19 10:32:45,302  INFO     Converting object type: str
+2025-05-19 10:32:45,309  INFO     Converting object type: str
+2025-05-19 10:32:45,403  INFO     Converting object type: str
+2025-05-19 10:32:45,410  INFO     Converting object type: str
+2025-05-19 10:32:45,503  INFO     Converting object type: str
+2025-05-19 10:32:45,510  INFO     Converting object type: str
+2025-05-19 10:32:45,603  INFO     Converting object type: str
+2025-05-19 10:32:45,609  INFO     Converting object type: str
+2025-05-19 10:32:45,703  INFO     Converting object type: str
+2025-05-19 10:32:45,709  INFO     Converting object type: str
+2025-05-19 10:32:45,798  INFO     Converting object type: str
+2025-05-19 10:32:45,804  INFO     Converting object type: str
+2025-05-19 10:32:45,899  INFO     Converting object type: str
+2025-05-19 10:32:45,906  INFO     Converting object type: str
+2025-05-19 10:32:45,994  INFO     Converting object type: str
+2025-05-19 10:32:46,000  INFO     Converting object type: str
+2025-05-19 10:32:46,089  INFO     Converting object type: str
+2025-05-19 10:32:46,095  INFO     Converting object type: str
+2025-05-19 10:32:46,185  INFO     Converting object type: str
+2025-05-19 10:32:46,192  INFO     Converting object type: str
+2025-05-19 10:32:46,288  INFO     Converting object type: str
+2025-05-19 10:32:46,295  INFO     Converting object type: str
+2025-05-19 10:32:46,389  INFO     Converting object type: str
+2025-05-19 10:32:46,396  INFO     Converting object type: str
+2025-05-19 10:32:46,492  INFO     Converting object type: str
+2025-05-19 10:32:46,498  INFO     Converting object type: str
+2025-05-19 10:32:46,592  INFO     Converting object type: str
+2025-05-19 10:32:46,598  INFO     Converting object type: str
+2025-05-19 10:32:46,693  INFO     Converting object type: str
+2025-05-19 10:32:46,701  INFO     Converting object type: str
+2025-05-19 10:32:46,796  INFO     Converting object type: str
+2025-05-19 10:32:46,802  INFO     Converting object type: str
+2025-05-19 10:32:46,897  INFO     Converting object type: str
+2025-05-19 10:32:46,904  INFO     Converting object type: str
+2025-05-19 10:32:46,997  INFO     Converting object type: str
+2025-05-19 10:32:47,004  INFO     Converting object type: str
+2025-05-19 10:32:47,099  INFO     Converting object type: str
+2025-05-19 10:32:47,106  INFO     Converting object type: str
+2025-05-19 10:32:47,194  INFO     Converting object type: str
+2025-05-19 10:32:47,200  INFO     Converting object type: str
+2025-05-19 10:32:47,289  INFO     Converting object type: str
+2025-05-19 10:32:47,296  INFO     Converting object type: str
+2025-05-19 10:32:47,383  INFO     Converting object type: str
+2025-05-19 10:32:47,390  INFO     Converting object type: str
+2025-05-19 10:32:47,480  INFO     Converting object type: str
+2025-05-19 10:32:47,487  INFO     Converting object type: str
+2025-05-19 10:32:47,573  INFO     Converting object type: str
+2025-05-19 10:32:47,579  INFO     Converting object type: str
+2025-05-19 10:32:47,671  INFO     Converting object type: str
+2025-05-19 10:32:47,677  INFO     Converting object type: str
+2025-05-19 10:32:47,767  INFO     Converting object type: str
+2025-05-19 10:32:47,773  INFO     Converting object type: str
+2025-05-19 10:32:47,867  INFO     Converting object type: str
+2025-05-19 10:32:47,874  INFO     Converting object type: str
+2025-05-19 10:32:47,967  INFO     Converting object type: str
+2025-05-19 10:32:47,974  INFO     Converting object type: str
+2025-05-19 10:32:48,066  INFO     Converting object type: str
+2025-05-19 10:32:48,073  INFO     Converting object type: str
+2025-05-19 10:32:48,168  INFO     Converting object type: str
+2025-05-19 10:32:48,175  INFO     Converting object type: str
+2025-05-19 10:32:48,269  INFO     Converting object type: str
+2025-05-19 10:32:48,275  INFO     Converting object type: str
+2025-05-19 10:32:48,370  INFO     Converting object type: str
+2025-05-19 10:32:48,377  INFO     Converting object type: str
+2025-05-19 10:32:48,471  INFO     Converting object type: str
+2025-05-19 10:32:48,477  INFO     Converting object type: str
+2025-05-19 10:32:48,571  INFO     Converting object type: str
+2025-05-19 10:32:48,577  INFO     Converting object type: str
+2025-05-19 10:32:48,671  INFO     Converting object type: str
+2025-05-19 10:32:48,680  INFO     Converting object type: str
+2025-05-19 10:32:48,775  INFO     Converting object type: str
+2025-05-19 10:32:48,782  INFO     Converting object type: str
+2025-05-19 10:32:48,877  INFO     Converting object type: str
+2025-05-19 10:32:48,883  INFO     Converting object type: str
+2025-05-19 10:32:48,972  INFO     Converting object type: str
+2025-05-19 10:32:48,979  INFO     Converting object type: str
+2025-05-19 10:32:49,075  INFO     Converting object type: str
+2025-05-19 10:32:49,082  INFO     Converting object type: str
+2025-05-19 10:32:49,177  INFO     Converting object type: str
+2025-05-19 10:32:49,183  INFO     Converting object type: str
+2025-05-19 10:32:49,277  INFO     Converting object type: str
+2025-05-19 10:32:49,283  INFO     Converting object type: str
+2025-05-19 10:32:49,380  INFO     Converting object type: str
+2025-05-19 10:32:49,386  INFO     Converting object type: str
+2025-05-19 10:32:49,484  INFO     Converting object type: str
+2025-05-19 10:32:49,493  INFO     Converting object type: str
+2025-05-19 10:32:49,592  INFO     Converting object type: str
+2025-05-19 10:32:49,600  INFO     Converting object type: str
+2025-05-19 10:32:49,700  INFO     Converting object type: str
+2025-05-19 10:32:49,708  INFO     Converting object type: str
+2025-05-19 10:32:49,809  INFO     Converting object type: str
+2025-05-19 10:32:49,817  INFO     Converting object type: str
+2025-05-19 10:32:49,917  INFO     Converting object type: str
+2025-05-19 10:32:49,927  INFO     Converting object type: str
+2025-05-19 10:32:50,028  INFO     Converting object type: str
+2025-05-19 10:32:50,038  INFO     Converting object type: str
+2025-05-19 10:32:50,138  INFO     Converting object type: str
+2025-05-19 10:32:50,149  INFO     Converting object type: str
+2025-05-19 10:32:50,251  INFO     Converting object type: str
+2025-05-19 10:32:50,260  INFO     Converting object type: str
+2025-05-19 10:32:50,361  INFO     Converting object type: str
+2025-05-19 10:32:50,370  INFO     Converting object type: str
+2025-05-19 10:32:50,470  INFO     Converting object type: str
+2025-05-19 10:32:50,478  INFO     Converting object type: str
+2025-05-19 10:32:50,578  INFO     Converting object type: str
+2025-05-19 10:32:50,586  INFO     Converting object type: str
+2025-05-19 10:32:50,687  INFO     Converting object type: str
+2025-05-19 10:32:50,696  INFO     Converting object type: str
+2025-05-19 10:32:50,796  INFO     Converting object type: str
+2025-05-19 10:32:50,803  INFO     Converting object type: str
+2025-05-19 10:32:50,905  INFO     Converting object type: str
+2025-05-19 10:32:50,912  INFO     Converting object type: str
+2025-05-19 10:32:51,016  INFO     Converting object type: str
+2025-05-19 10:32:51,026  INFO     Converting object type: str
+2025-05-19 10:32:51,127  INFO     Converting object type: str
+2025-05-19 10:32:51,135  INFO     Converting object type: str
+2025-05-19 10:32:51,238  INFO     Converting object type: str
+2025-05-19 10:32:51,245  INFO     Converting object type: str
+2025-05-19 10:32:51,347  INFO     Converting object type: str
+2025-05-19 10:32:51,355  INFO     Converting object type: str
+2025-05-19 10:32:51,453  INFO     Converting object type: str
+2025-05-19 10:32:51,461  INFO     Converting object type: str
+2025-05-19 10:32:51,562  INFO     Converting object type: str
+2025-05-19 10:32:51,570  INFO     Converting object type: str
+2025-05-19 10:32:51,668  INFO     Converting object type: str
+2025-05-19 10:32:51,675  INFO     Converting object type: str
+2025-05-19 10:32:51,770  INFO     Converting object type: str
+2025-05-19 10:32:51,778  INFO     Converting object type: str
+2025-05-19 10:32:51,870  INFO     Converting object type: str
+2025-05-19 10:32:51,878  INFO     Converting object type: str
+2025-05-19 10:32:51,966  INFO     Converting object type: str
+2025-05-19 10:32:51,975  INFO     Converting object type: str
+2025-05-19 10:32:52,061  INFO     Converting object type: str
+2025-05-19 10:32:52,068  INFO     Converting object type: str
+2025-05-19 10:32:52,144  INFO     Converting object type: str
+2025-05-19 10:32:52,150  INFO     Converting object type: str
+2025-05-19 10:32:52,225  INFO     Converting object type: str
+2025-05-19 10:32:52,231  INFO     Converting object type: str
+2025-05-19 10:32:52,309  INFO     Converting object type: str
+2025-05-19 10:32:52,318  INFO     Converting object type: str
+2025-05-19 10:32:52,399  INFO     Converting object type: str
+2025-05-19 10:32:52,405  INFO     Converting object type: str
+2025-05-19 10:32:52,485  INFO     Converting object type: str
+2025-05-19 10:32:52,493  INFO     Converting object type: str
+2025-05-19 10:32:52,574  INFO     Converting object type: str
+2025-05-19 10:32:52,580  INFO     Converting object type: str
+2025-05-19 10:32:52,662  INFO     Converting object type: str
+2025-05-19 10:32:52,670  INFO     Converting object type: str
+2025-05-19 10:32:52,754  INFO     Converting object type: str
+2025-05-19 10:32:52,762  INFO     Converting object type: str
+2025-05-19 10:32:52,868  INFO     Converting object type: str
+2025-05-19 10:32:52,876  INFO     Converting object type: str
+2025-05-19 10:32:52,957  INFO     Converting object type: str
+2025-05-19 10:32:52,965  INFO     Converting object type: str
+2025-05-19 10:32:53,055  INFO     Converting object type: str
+2025-05-19 10:32:53,063  INFO     Converting object type: str
+2025-05-19 10:32:53,158  INFO     Converting object type: str
+2025-05-19 10:32:53,168  INFO     Converting object type: str
+2025-05-19 10:32:53,262  INFO     Converting object type: str
+2025-05-19 10:32:53,269  INFO     Converting object type: str
+2025-05-19 10:32:53,389  INFO     Converting object type: str
+2025-05-19 10:32:53,396  INFO     Converting object type: str
+2025-05-19 10:32:53,519  INFO     Converting object type: str
+2025-05-19 10:32:53,526  INFO     Converting object type: str
+2025-05-19 10:32:53,651  INFO     Converting object type: str
+2025-05-19 10:32:53,658  INFO     Converting object type: str
+2025-05-19 10:32:53,776  INFO     Converting object type: str
+2025-05-19 10:32:53,784  INFO     Converting object type: str
+2025-05-19 10:32:53,907  INFO     Converting object type: str
+2025-05-19 10:32:53,914  INFO     Converting object type: str
+2025-05-19 10:32:54,032  INFO     Converting object type: str
+2025-05-19 10:32:54,039  INFO     Converting object type: str
+2025-05-19 10:32:54,160  INFO     Converting object type: str
+2025-05-19 10:32:54,168  INFO     Converting object type: str
+2025-05-19 10:32:54,284  INFO     Converting object type: str
+2025-05-19 10:32:54,291  INFO     Converting object type: str
+2025-05-19 10:32:54,408  INFO     Converting object type: str
+2025-05-19 10:32:54,415  INFO     Converting object type: str
+2025-05-19 10:32:54,531  INFO     Converting object type: str
+2025-05-19 10:32:54,537  INFO     Converting object type: str
+2025-05-19 10:32:54,653  INFO     Converting object type: str
+2025-05-19 10:32:54,660  INFO     Converting object type: str
+2025-05-19 10:32:54,774  INFO     Converting object type: str
+2025-05-19 10:32:54,781  INFO     Converting object type: str
+2025-05-19 10:32:54,896  INFO     Converting object type: str
+2025-05-19 10:32:54,903  INFO     Converting object type: str
+2025-05-19 10:32:55,019  INFO     Converting object type: str
+2025-05-19 10:32:55,026  INFO     Converting object type: str
+2025-05-19 10:32:55,141  INFO     Converting object type: str
+2025-05-19 10:32:55,148  INFO     Converting object type: str
+2025-05-19 10:32:55,262  INFO     Converting object type: str
+2025-05-19 10:32:55,270  INFO     Converting object type: str
+2025-05-19 10:32:55,385  INFO     Converting object type: str
+2025-05-19 10:32:55,392  INFO     Converting object type: str
+2025-05-19 10:32:55,509  INFO     Converting object type: str
+2025-05-19 10:32:55,515  INFO     Converting object type: str
+2025-05-19 10:32:55,632  INFO     Converting object type: str
+2025-05-19 10:32:55,642  INFO     Converting object type: str
+2025-05-19 10:32:55,758  INFO     Converting object type: str
+2025-05-19 10:32:55,765  INFO     Converting object type: str
+2025-05-19 10:32:55,883  INFO     Converting object type: str
+2025-05-19 10:32:55,890  INFO     Converting object type: str
+2025-05-19 10:32:56,006  INFO     Converting object type: str
+2025-05-19 10:32:56,013  INFO     Converting object type: str
+2025-05-19 10:32:56,129  INFO     Converting object type: str
+2025-05-19 10:32:56,136  INFO     Converting object type: str
+2025-05-19 10:32:56,257  INFO     Converting object type: str
+2025-05-19 10:32:56,265  INFO     Converting object type: str
+2025-05-19 10:32:56,386  INFO     Converting object type: str
+2025-05-19 10:32:56,393  INFO     Converting object type: str
+2025-05-19 10:32:56,510  INFO     Converting object type: str
+2025-05-19 10:32:56,516  INFO     Converting object type: str
+2025-05-19 10:32:56,638  INFO     Converting object type: str
+2025-05-19 10:32:56,645  INFO     Converting object type: str
+2025-05-19 10:32:56,764  INFO     Converting object type: str
+2025-05-19 10:32:56,770  INFO     Converting object type: str
+2025-05-19 10:32:56,887  INFO     Converting object type: str
+2025-05-19 10:32:56,894  INFO     Converting object type: str
+2025-05-19 10:32:57,011  INFO     Converting object type: str
+2025-05-19 10:32:57,019  INFO     Converting object type: str
+2025-05-19 10:32:57,135  INFO     Converting object type: str
+2025-05-19 10:32:57,141  INFO     Converting object type: str
+2025-05-19 10:32:57,259  INFO     Converting object type: str
+2025-05-19 10:32:57,266  INFO     Converting object type: str
+2025-05-19 10:32:57,384  INFO     Converting object type: str
+2025-05-19 10:32:57,391  INFO     Converting object type: str
+2025-05-19 10:32:57,508  INFO     Converting object type: str
+2025-05-19 10:32:57,515  INFO     Converting object type: str
+2025-05-19 10:32:57,633  INFO     Converting object type: str
+2025-05-19 10:32:57,640  INFO     Converting object type: str
+2025-05-19 10:32:57,754  INFO     Converting object type: str
+2025-05-19 10:32:57,762  INFO     Converting object type: str
+2025-05-19 10:32:57,883  INFO     Converting object type: str
+2025-05-19 10:32:57,889  INFO     Converting object type: str
+2025-05-19 10:32:58,001  INFO     Converting object type: str
+2025-05-19 10:32:58,008  INFO     Converting object type: str
+2025-05-19 10:32:58,125  INFO     Converting object type: str
+2025-05-19 10:32:58,132  INFO     Converting object type: str
+2025-05-19 10:32:58,244  INFO     Converting object type: str
+2025-05-19 10:32:58,251  INFO     Converting object type: str
+2025-05-19 10:32:58,371  INFO     Converting object type: str
+2025-05-19 10:32:58,379  INFO     Converting object type: str
+2025-05-19 10:32:58,501  INFO     Converting object type: str
+2025-05-19 10:32:58,508  INFO     Converting object type: str
+2025-05-19 10:32:58,632  INFO     Converting object type: str
+2025-05-19 10:32:58,639  INFO     Converting object type: str
+2025-05-19 10:32:58,760  INFO     Converting object type: str
+2025-05-19 10:32:58,767  INFO     Converting object type: str
+2025-05-19 10:32:58,887  INFO     Converting object type: str
+2025-05-19 10:32:58,894  INFO     Converting object type: str
+2025-05-19 10:32:59,014  INFO     Converting object type: str
+2025-05-19 10:32:59,021  INFO     Converting object type: str
+2025-05-19 10:32:59,141  INFO     Converting object type: str
+2025-05-19 10:32:59,148  INFO     Converting object type: str
+2025-05-19 10:32:59,266  INFO     Converting object type: str
+2025-05-19 10:32:59,273  INFO     Converting object type: str
+2025-05-19 10:32:59,393  INFO     Converting object type: str
+2025-05-19 10:32:59,400  INFO     Converting object type: str
+2025-05-19 10:32:59,516  INFO     Converting object type: str
+2025-05-19 10:32:59,525  INFO     Converting object type: str
+2025-05-19 10:32:59,637  INFO     Converting object type: str
+2025-05-19 10:32:59,644  INFO     Converting object type: str
+2025-05-19 10:32:59,757  INFO     Converting object type: str
+2025-05-19 10:32:59,762  INFO     Converting object type: str
+2025-05-19 10:32:59,875  INFO     Converting object type: str
+2025-05-19 10:32:59,881  INFO     Converting object type: str
+2025-05-19 10:32:59,994  INFO     Converting object type: str
+2025-05-19 10:33:00,000  INFO     Converting object type: str
+2025-05-19 10:33:00,119  INFO     Converting object type: str
+2025-05-19 10:33:00,125  INFO     Converting object type: str
+2025-05-19 10:33:00,243  INFO     Converting object type: str
+2025-05-19 10:33:00,248  INFO     Converting object type: str
+2025-05-19 10:33:00,366  INFO     Converting object type: str
+2025-05-19 10:33:00,372  INFO     Converting object type: str
+2025-05-19 10:33:00,566  INFO     Converting object type: str
+2025-05-19 10:33:00,572  INFO     Converting object type: str
+2025-05-19 10:33:00,697  INFO     Converting object type: str
+2025-05-19 10:33:00,704  INFO     Converting object type: str
+2025-05-19 10:33:00,830  INFO     Converting object type: str
+2025-05-19 10:33:00,837  INFO     Converting object type: str
+2025-05-19 10:33:00,954  INFO     Converting object type: str
+2025-05-19 10:33:00,960  INFO     Converting object type: str
+2025-05-19 10:33:01,088  INFO     Converting object type: str
+2025-05-19 10:33:01,095  INFO     Converting object type: str
+2025-05-19 10:33:01,216  INFO     Converting object type: str
+2025-05-19 10:33:01,223  INFO     Converting object type: str
+2025-05-19 10:33:01,342  INFO     Converting object type: str
+2025-05-19 10:33:01,349  INFO     Converting object type: str
+2025-05-19 10:33:01,469  INFO     Converting object type: str
+2025-05-19 10:33:01,476  INFO     Converting object type: str
+2025-05-19 10:33:01,594  INFO     Converting object type: str
+2025-05-19 10:33:01,601  INFO     Converting object type: str
+2025-05-19 10:33:01,725  INFO     Converting object type: str
+2025-05-19 10:33:01,732  INFO     Converting object type: str
+2025-05-19 10:33:01,847  INFO     Converting object type: str
+2025-05-19 10:33:01,854  INFO     Converting object type: str
+2025-05-19 10:33:01,974  INFO     Converting object type: str
+2025-05-19 10:33:01,980  INFO     Converting object type: str
+2025-05-19 10:33:02,102  INFO     Converting object type: str
+2025-05-19 10:33:02,109  INFO     Converting object type: str
+2025-05-19 10:33:02,256  INFO     Converting object type: str
+2025-05-19 10:33:02,263  INFO     Converting object type: str
+2025-05-19 10:33:02,385  INFO     Converting object type: str
+2025-05-19 10:33:02,392  INFO     Converting object type: str
+2025-05-19 10:33:02,516  INFO     Converting object type: str
+2025-05-19 10:33:02,523  INFO     Converting object type: str
+2025-05-19 10:33:02,645  INFO     Converting object type: str
+2025-05-19 10:33:02,652  INFO     Converting object type: str
+2025-05-19 10:33:02,774  INFO     Converting object type: str
+2025-05-19 10:33:02,782  INFO     Converting object type: str
+2025-05-19 10:33:02,909  INFO     Converting object type: str
+2025-05-19 10:33:02,917  INFO     Converting object type: str
+2025-05-19 10:33:03,042  INFO     Converting object type: str
+2025-05-19 10:33:03,050  INFO     Converting object type: str
+2025-05-19 10:33:03,177  INFO     Converting object type: str
+2025-05-19 10:33:03,185  INFO     Converting object type: str
+2025-05-19 10:33:03,310  INFO     Converting object type: str
+2025-05-19 10:33:03,317  INFO     Converting object type: str
+2025-05-19 10:33:03,447  INFO     Converting object type: str
+2025-05-19 10:33:03,453  INFO     Converting object type: str
+2025-05-19 10:33:03,579  INFO     Converting object type: str
+2025-05-19 10:33:03,586  INFO     Converting object type: str
+2025-05-19 10:33:03,710  INFO     Converting object type: str
+2025-05-19 10:33:03,717  INFO     Converting object type: str
+2025-05-19 10:33:03,841  INFO     Converting object type: str
+2025-05-19 10:33:03,849  INFO     Converting object type: str
+2025-05-19 10:33:03,975  INFO     Converting object type: str
+2025-05-19 10:33:03,982  INFO     Converting object type: str
+2025-05-19 10:33:04,106  INFO     Converting object type: str
+2025-05-19 10:33:04,113  INFO     Converting object type: str
+2025-05-19 10:33:04,239  INFO     Converting object type: str
+2025-05-19 10:33:04,246  INFO     Converting object type: str
+2025-05-19 10:33:04,372  INFO     Converting object type: str
+2025-05-19 10:33:04,379  INFO     Converting object type: str
+2025-05-19 10:33:04,506  INFO     Converting object type: str
+2025-05-19 10:33:04,513  INFO     Converting object type: str
+2025-05-19 10:33:04,638  INFO     Converting object type: str
+2025-05-19 10:33:04,646  INFO     Converting object type: str
+2025-05-19 10:33:04,771  INFO     Converting object type: str
+2025-05-19 10:33:04,778  INFO     Converting object type: str
+2025-05-19 10:33:04,900  INFO     Converting object type: str
+2025-05-19 10:33:04,906  INFO     Converting object type: str
+2025-05-19 10:33:05,029  INFO     Converting object type: str
+2025-05-19 10:33:05,037  INFO     Converting object type: str
+2025-05-19 10:33:05,157  INFO     Converting object type: str
+2025-05-19 10:33:05,164  INFO     Converting object type: str
+2025-05-19 10:33:05,283  INFO     Converting object type: str
+2025-05-19 10:33:05,290  INFO     Converting object type: str
+2025-05-19 10:33:05,406  INFO     Converting object type: str
+2025-05-19 10:33:05,413  INFO     Converting object type: str
+2025-05-19 10:33:05,530  INFO     Converting object type: str
+2025-05-19 10:33:05,536  INFO     Converting object type: str
+2025-05-19 10:33:05,648  INFO     Converting object type: str
+2025-05-19 10:33:05,655  INFO     Converting object type: str
+2025-05-19 10:33:05,757  INFO     Converting object type: str
+2025-05-19 10:33:05,763  INFO     Converting object type: str
+2025-05-19 10:33:05,866  INFO     Converting object type: str
+2025-05-19 10:33:05,872  INFO     Converting object type: str
+2025-05-19 10:33:05,975  INFO     Converting object type: str
+2025-05-19 10:33:05,981  INFO     Converting object type: str
+2025-05-19 10:33:06,084  INFO     Converting object type: str
+2025-05-19 10:33:06,090  INFO     Converting object type: str
+2025-05-19 10:33:06,195  INFO     Converting object type: str
+2025-05-19 10:33:06,202  INFO     Converting object type: str
+2025-05-19 10:33:06,310  INFO     Converting object type: str
+2025-05-19 10:33:06,317  INFO     Converting object type: str
+2025-05-19 10:33:06,426  INFO     Converting object type: str
+2025-05-19 10:33:06,433  INFO     Converting object type: str
+2025-05-19 10:33:06,541  INFO     Converting object type: str
+2025-05-19 10:33:06,548  INFO     Converting object type: str
+2025-05-19 10:33:06,658  INFO     Converting object type: str
+2025-05-19 10:33:06,665  INFO     Converting object type: str
+2025-05-19 10:33:06,770  INFO     Converting object type: str
+2025-05-19 10:33:06,778  INFO     Converting object type: str
+2025-05-19 10:33:06,890  INFO     Converting object type: str
+2025-05-19 10:33:06,898  INFO     Converting object type: str
+2025-05-19 10:33:07,012  INFO     Converting object type: str
+2025-05-19 10:33:07,020  INFO     Converting object type: str
+2025-05-19 10:33:19,511  INFO     Mask-RCNN kept 2 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:22,255  INFO     Mask-RCNN kept 0 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:24,924  INFO     Mask-RCNN kept 4 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:27,600  INFO     Mask-RCNN kept 0 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:30,422  INFO     Mask-RCNN kept 3 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:33,171  INFO     Mask-RCNN kept 1 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:35,790  INFO     Mask-RCNN kept 0 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:38,429  INFO     Mask-RCNN kept 3 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:41,001  INFO     Mask-RCNN kept 3 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:43,644  INFO     Mask-RCNN kept 0 new objects (score ≥ 0.1, IoU ≤ 0.1)
+2025-05-19 10:33:43,649  INFO     Submitting 1 pairs to ThreadPoolExecutor (max_workers=1)– debug flags: pre=True, post=True, diff=True, gpt_tile=True
+2025-05-19 10:33:43,649  INFO     [ThreadPoolExecutor-1_0]  Pair 25: 6 tiles ready
+2025-05-19 10:33:47,078  INFO     Retrying request to /chat/completions in 0.420072 seconds
+2025-05-19 10:33:47,078  INFO     Retrying request to /chat/completions in 0.496874 seconds
+2025-05-19 10:33:56,641  INFO     HTTP Request: POST https://openairoiedemotest.openai.azure.com/openai/deployments/o3/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2025-05-19 10:33:56,646  INFO     [thread_name] GPT raw pair 25 tile 1: {
+"change_detected": false,
+"reason": "אין שינוי מהותי; הבדל מזערי בתאורה ופס Letter-box שחור בתחתית התמונה השנייה שנפסל לפי הכללים.",
+"bbox_before": [0, 0, 0, 0],
+"bbox_after": [0, 0, 0, 0],
+"movement_px": 0,
+"changed_pixels_percent": 0.2,
+"confidence": 94
+}
+2025-05-19 10:33:58,733  INFO     HTTP Request: POST https://openairoiedemotest.openai.azure.com/openai/deployments/o3/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2025-05-19 10:33:58,736  INFO     [thread_name] GPT raw pair 25 tile 3: {
+"change_detected": false,
+"reason": "לא נמצא שינוי משמעותי מעבר לשינויים קלים בתאורה/צל",
+"bbox_before": [],
+"bbox_after": [],
+"movement_px": 0,
+"changed_pixels_percent": 0.2,
+"confidence": 90
+}
+2025-05-19 10:34:00,710  INFO     HTTP Request: POST https://openairoiedemotest.openai.azure.com/openai/deployments/o3/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2025-05-19 10:34:00,713  INFO     [thread_name] GPT raw pair 25 tile 4: {
+"change_detected": false,
+"reason": "ההבדל העיקרי הוא פס שחור אחיד בקצה התחתון (Letter-box) – נפסל לפי כלל Letter-box Bar, ללא שינוי מהותי בתוכן.",
+"bbox_before": [0, 0, 0, 0],
+"bbox_after":  [0, 0, 0, 0],
+"movement_px": 0,
+"changed_pixels_percent": 0.0,
+"confidence": 92
+}
+2025-05-19 10:34:09,488  INFO     HTTP Request: POST https://openairoiedemotest.openai.azure.com/openai/deployments/o3/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2025-05-19 10:34:09,492  INFO     [thread_name] GPT raw pair 25 tile 5: {
+"change_detected": false,
+"reason": "לא נמצא שינוי מהותי – רק תזוזה קלה ו-הבדלי תאורה בצמחייה מפוזרת שעומדת בספי הסינון הירוקים/כחולים",
+"bbox_before": [0, 0, 0, 0],
+"bbox_after":  [0, 0, 0, 0],
+"movement_px": 0,
+"changed_pixels_percent": 1.2,
+"confidence": 86
+}
+2025-05-19 10:34:13,313  INFO     HTTP Request: POST https://openairoiedemotest.openai.azure.com/openai/deployments/o3/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2025-05-19 10:34:13,314  INFO     [thread_name] GPT raw pair 25 tile 6: {
+"change_detected": false,
+"reason": "הבדל נובע מהזחה קטנה של המצלמה; לא מופיע או נעלם אובייקט מהותי",
+"bbox_before": [],
+"bbox_after": [],
+"movement_px": 12,
+"changed_pixels_percent": 4.1,
+"confidence": 91
+}
+2025-05-19 10:34:16,111  INFO     HTTP Request: POST https://openairoiedemotest.openai.azure.com/openai/deployments/o3/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2025-05-19 10:34:16,115  INFO     [thread_name] GPT raw pair 25 tile 2: {
+"change_detected": true,
+"reason": "הופיע Patch קרקע חום/סלע בולט בשטח העשב",
+"bbox_before": [110, 80, 190, 160],
+"bbox_after":  [110, 80, 190, 160],
+"movement_px": 0,
+"changed_pixels_percent": 3.8,
+"confidence": 72
+}
+2025-05-19 10:34:16,142  INFO     [ThreadPoolExecutor-1_0] ✅ Pair 25 finished – 1 changes, 32.5s
+2025-05-19 10:34:16,145  INFO     ↩️  Pair 25 collected – 0 changes
+2025-05-19 10:34:16,146  INFO     Progress: 1/1 pairs finished
